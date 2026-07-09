@@ -1,0 +1,5 @@
+fastapi>=0.110.0        # Web 框架
+uvicorn[standard]>=0.29.0  # ASGI 服务器
+pydantic>=2.6.0         # 数据校验/响应模型
+python-multipart>=0.0.9 # 表单(如需)
+# SQLite3 为标准库，无需安装

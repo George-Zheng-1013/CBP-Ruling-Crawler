@@ -1,0 +1,112 @@
+classDiagram
+    %% ========== 后端：数据访问层 ==========
+    class DatabaseManager {
+        +str db_path
+        +connect() Connection
+        +fetch_rulings(params) list
+        +fetch_ruling_by_no(ruling_no) dict
+        +fetch_stats() dict
+        +fetch_html(ruling_no) dict
+    }
+
+    class SearchParams {
+        +str keyword
+        +str ruling_no
+        +int year
+        +str status
+        +str hs_code
+        +int page
+        +int page_size
+        +str sort
+    }
+
+    class SearchService {
+        +build_where(params) tuple~str, list~
+        +paginate(rows, total, page, size) PageResult
+    }
+
+    %% ========== 后端：Pydantic 响应模型 ==========
+    class RulingListItem {
+        +str ruling_no
+        +str subject
+        +int year
+        +str hs_code
+        +str status
+        +bool parse_failed
+    }
+    class RulingDetail {
+        +str ruling_no
+        +str subject
+        +str description
+        +str hs_code
+        +List~str~ hs_codes
+        +int year
+        +str ruling_date
+        +str status
+        +str detail_url
+        +bool parse_failed
+        +str parse_error_msg
+    }
+    class StatsOverview {
+        +int total
+        +int parse_failed
+        +List~YearCount~ by_year
+        +List~StatusCount~ by_status
+    }
+    class YearCount {
+        +int year
+        +int count
+    }
+    class StatusCount {
+        +str status
+        +int count
+    }
+    class PageResult {
+        +List items
+        +int total
+        +int page
+        +int page_size
+        +int total_pages
+    }
+
+    %% ========== 后端：路由层 ==========
+    class RulingsRouter {
+        +GET /api/rulings
+        +GET /api/rulings/{ruling_no}
+        +GET /api/rulings/export
+        +GET /api/rulings/{ruling_no}/html
+    }
+    class StatsRouter {
+        +GET /api/stats/overview
+    }
+
+    %% ========== 前端：TypeScript 类型 ==========
+    class RulingItemFE {
+        +string rulingNo
+        +string subject
+        +number year
+        +string hsCode
+        +string status
+        +boolean parseFailed
+    }
+    class QueryState {
+        +string keyword
+        +string rulingNo
+        +number|null year
+        +string status
+        +string hsCode
+        +number page
+    }
+
+    %% ── 关系 ──
+    SearchService ..> SearchParams : 接收
+    SearchService ..> DatabaseManager : 调用查询
+    DatabaseManager ..> SearchParams : 使用过滤条件
+    RulingsRouter ..> SearchService : 委托
+    StatsRouter ..> DatabaseManager : 委托
+    RulingListItem <|-- RulingDetail : 继承
+    StatsOverview *-- YearCount : 包含
+    StatsOverview *-- StatusCount : 包含
+    PageResult "1" *-- "0..*" RulingListItem : 分页包装
+    RulingItemFE .. RulingListItem : 前端映射(snake→camel)
+    QueryState .. SearchParams : 导出为查询参数

@@ -1,0 +1,51 @@
+sequenceDiagram
+    actor User
+    participant SP as SearchPage (React)
+    participant QS as queryStore (Zustand)
+    participant API as ApiClient (axios)
+    participant SVC as SearchService (FastAPI)
+    participant DB as DatabaseManager
+    participant SQL as SQLite (cbp_rulings.db)
+    participant DP as DetailPage (React)
+
+    rect rgba(235,245,255,.35)
+    note over User,SQL: 主流程 1 — 关键词搜索 + 列表
+    User->>SP: 输入关键词 "toy" + 年份/状态筛选
+    SP->>QS: 写入查询状态 (keyword/year/status)
+    SP->>API: GET /api/rulings?keyword=toy&year=2023&status=active&page=1
+    API->>SVC: 解析参数 -> SearchParams
+    SVC->>DB: fetch_rulings(params)
+    DB->>SQL: SELECT * FROM rulings WHERE subject LIKE ? OR description LIKE ? ... LIMIT/OFFSET
+    SQL-->>DB: 匹配行 + COUNT(*) 总数
+    DB-->>SVC: (rows, total)
+    SVC-->>API: 200 {code:0, data: PageResult}
+    API-->>SP: RulingListItem[] + 分页元数据
+    SP->>SP: 渲染 ResultList / Pagination
+    end
+
+    rect rgba(240,255,240,.35)
+    note over User,DP: 主流程 2 — 点击进入详情
+    User->>SP: 点击卡片 (ruling_no = N12345)
+    SP->>DP: 路由跳转 /ruling/N12345
+    DP->>API: GET /api/rulings/N12345
+    API->>SVC: 详情请求
+    SVC->>DB: fetch_ruling_by_no("N12345")
+    DB->>SQL: SELECT * FROM rulings WHERE ruling_no = ?
+    SQL-->>DB: 1 行 (含 description / detail_url / parse_failed)
+    DB-->>SVC: dict
+    SVC-->>API: {code:0, data: RulingDetail}
+    API-->>DP: 渲染全文 + 官方链接 + 解析失败提示
+    end
+
+    rect rgba(255,248,235,.45)
+    note over User,SQL: 辅助流程 — 统计概览
+    User->>SP: 点击「统计概览」入口
+    SP->>API: GET /api/stats/overview
+    API->>SVC: 统计请求
+    SVC->>DB: fetch_stats()
+    DB->>SQL: COUNT 总量 / 按年 GROUP BY / 按状态 GROUP BY / parse_failed=1
+    SQL-->>DB: 统计结果
+    DB-->>SVC: dict
+    SVC-->>API: {code:0, data: StatsOverview}
+    API-->>SP: 渲染图表
+    end
