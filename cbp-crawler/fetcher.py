@@ -22,7 +22,6 @@ from config import (
 )
 from utils import (
     setup_logger,
-    random_delay,
     exponential_backoff,
 )
 
@@ -102,7 +101,6 @@ def fetch_json(url: str, timeout: int = REQUEST_TIMEOUT,
                     if attempt < max_retries:
                         exponential_backoff(attempt)
                     continue
-                random_delay()
                 return JsonResult(url=url, data=payload,
                                   status_code=response.status_code)
             elif response.status_code == 429:
@@ -114,7 +112,6 @@ def fetch_json(url: str, timeout: int = REQUEST_TIMEOUT,
                 last_error = "HTTP 429 (rate limited)"
             elif response.status_code == 404:
                 # A missing ruling is a definitive answer, not worth retrying.
-                random_delay()
                 return JsonResult(url=url, data=None,
                                   status_code=404,
                                   error_message="HTTP 404 (not found)")

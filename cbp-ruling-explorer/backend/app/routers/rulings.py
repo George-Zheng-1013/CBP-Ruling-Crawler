@@ -47,6 +47,12 @@ _EXPORT_FIELDS = [
 def list_rulings(params: SearchParams = Depends()) -> Envelope[PageResult[RulingListItem]]:
     """返回过滤 + 分页的裁定列表。"""
     page = _service.search(params)
+    for row in page.items:
+        if isinstance(row.get("hs_codes"), str):
+            try:
+                row["hs_codes"] = json.loads(row["hs_codes"])
+            except (json.JSONDecodeError, TypeError):
+                row["hs_codes"] = []
     items = [RulingListItem(**row) for row in page.items]
     result = PageResult[RulingListItem](
         items=items,

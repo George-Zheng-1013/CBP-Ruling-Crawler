@@ -6,13 +6,13 @@ export interface RulingItemFE {
   subject: string;
   year: number;
   hsCode: string;
+  hsCodes: string[];
   status: string;
   parseFailed: boolean;
 }
 
 export interface RulingDetailFE extends RulingItemFE {
   description: string;
-  hsCodes: string[];
   rulingDate: string;
   detailUrl: string;
   parseErrorMsg: string;

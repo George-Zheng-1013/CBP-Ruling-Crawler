@@ -29,8 +29,8 @@ describe('downloadCsvFromItems', () => {
 
   it('produces a UTF-8 BOM CSV with correct header and data rows', async () => {
     const items: RulingItemFE[] = [
-      { rulingNo: 'N12345', subject: 'Toy', year: 2023, hsCode: '9503', status: 'active', parseFailed: false },
-      { rulingNo: 'N33333', subject: 'Failed', year: 2022, hsCode: '8518', status: 'active', parseFailed: true },
+      { rulingNo: 'N12345', subject: 'Toy', year: 2023, hsCode: '9503', hsCodes: ['9503'], status: 'active', parseFailed: false },
+      { rulingNo: 'N33333', subject: 'Failed', year: 2022, hsCode: '8518', hsCodes: ['8518'], status: 'active', parseFailed: true },
     ];
     downloadCsvFromItems(items, 'out.csv');
 
@@ -48,7 +48,7 @@ describe('downloadCsvFromItems', () => {
 
   it('escapes commas and quotes per RFC 4180', async () => {
     const items: RulingItemFE[] = [
-      { rulingNo: 'X1', subject: 'a,b "c"', year: 2024, hsCode: '1', status: 'active', parseFailed: false },
+      { rulingNo: 'X1', subject: 'a,b "c"', year: 2024, hsCode: '1', hsCodes: ['1'], status: 'active', parseFailed: false },
     ];
     downloadCsvFromItems(items);
     const blob = (globalThis as any).URL.createObjectURL.mock.calls[0][0];

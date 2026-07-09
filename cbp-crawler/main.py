@@ -25,7 +25,6 @@ from config import (
 )
 from utils import (
     setup_logger,
-    random_delay,
 )
 from storage import DatabaseManager
 from fetcher import (
@@ -70,7 +69,8 @@ class CrawlerPipeline:
                         max_rulings: int = -1,
                         min_date: Optional[str] = None,
                         series: Optional[List[str]] = None,
-                        sort_by: str = API_SORT_BY_DATE_DESC) -> Dict[str, Any]:
+                        sort_by: str = API_SORT_BY_DATE_DESC,
+                        skip_no_tariffs: bool = True) -> Dict[str, Any]:
         """Crawl rulings via the CROSS JSON API.
 
         For each enumeration term (HTS chapter code), pages through
@@ -102,6 +102,8 @@ class CrawlerPipeline:
             sort_by: API sort mode. Defaults to 'DATE_DESC' (newest first) so a
                      date-bounded crawl stops paging as soon as it passes
                      min_date; use 'RELEVANCE' for the original behaviour.
+            skip_no_tariffs: If True, skip rulings with no tariff codes
+                             (non-tariff-classification rulings).
 
         Returns:
             Dict with crawl statistics.
@@ -128,6 +130,7 @@ class CrawlerPipeline:
             "skipped_year": 0,
             "skipped_series": 0,
             "skipped_no_date": 0,
+            "skipped_no_tariffs": 0,
             "validation_warnings": 0,
             "errors": [],
         }
@@ -175,6 +178,11 @@ class CrawlerPipeline:
                     item_collection = str(item.get("collection") or "").lower()
                     if item_collection and item_collection not in allowed_series:
                         stats["skipped_series"] += 1
+                        continue
+
+                    # Skip rulings with no tariff codes (non-classification)
+                    if skip_no_tariffs and not item.get("hs_codes"):
+                        stats["skipped_no_tariffs"] += 1
                         continue
 
                     # Date lower-bound filter (inclusive, ISO string compare)
@@ -254,8 +262,6 @@ class CrawlerPipeline:
                     self._ruling_no_cache.add(record["ruling_no"])
                     stats["upserted"] += 1
 
-                random_delay()
-
             except Exception as e:  # noqa: BLE001 - keep the crawl resilient
                 logger.error("API crawl error for %s: %s", rn, str(e))
                 stats["detail_failed"] += 1
@@ -275,6 +281,7 @@ class CrawlerPipeline:
                 min_date: Optional[str] = None,
                 series: Optional[List[str]] = None,
                 sort_by: str = API_SORT_BY_DATE_DESC,
+                skip_no_tariffs: bool = True,
                 include_failed: bool = False,
                 format: str = "text") -> Dict[str, Any]:
         """Run the JSON-API crawl end to end, then export.
@@ -294,6 +301,7 @@ class CrawlerPipeline:
             min_date=min_date,
             series=series,
             sort_by=sort_by,
+            skip_no_tariffs=skip_no_tariffs,
         )
         results["export"] = self.phase_export(
             include_failed=include_failed, format=format)
@@ -511,6 +519,20 @@ Examples:
     )
 
     parser.add_argument(
+        "--skip-no-tariffs",
+        action="store_true",
+        dest="skip_no_tariffs",
+        default=True,
+        help="(api phase) Skip rulings with no tariff codes (default: on)",
+    )
+    parser.add_argument(
+        "--no-skip-no-tariffs",
+        action="store_false",
+        dest="skip_no_tariffs",
+        help="(api phase) Keep rulings without tariff codes as well",
+    )
+
+    parser.add_argument(
         "--include-failed",
         action="store_true",
         default=False,
@@ -574,6 +596,7 @@ def main() -> None:
                 max_rulings=args.max_rulings,
                 min_date=args.min_date,
                 series=args.series,
+                skip_no_tariffs=args.skip_no_tariffs,
                 include_failed=args.include_failed,
                 format=args.format,
             )

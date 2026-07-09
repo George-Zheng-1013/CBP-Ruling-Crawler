@@ -67,6 +67,7 @@ class RulingListItem(BaseModel):
     subject: str = ""
     year: int = 0
     hs_code: str = ""
+    hs_codes: List[str] = Field(default_factory=list)
     status: str = "active"
     parse_failed: bool = False
 

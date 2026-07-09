@@ -83,7 +83,7 @@ class DatabaseManager:
 
         offset = (page - 1) * page_size
         data_sql = (
-            "SELECT ruling_no, subject, year, hs_code, status, parse_failed "
+            "SELECT ruling_no, subject, year, hs_code, hs_codes, status, parse_failed "
             f"FROM rulings{where_sql}{order_sql} LIMIT ? OFFSET ?"
         )
         rows = conn.execute(

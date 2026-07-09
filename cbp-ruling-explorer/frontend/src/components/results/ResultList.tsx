@@ -1,4 +1,4 @@
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { RulingItemFE } from '../../types/ruling';
 import { RulingCard } from './RulingCard';
 import { Loading } from '../common/Loading';
@@ -23,12 +23,15 @@ export function ResultList({ items, loading, error, onRetry }: Props) {
     );
   }
   return (
-    <Grid container spacing={2}>
+    <Box
+      sx={{
+        columns: { xs: 1, sm: 2, lg: 3 },
+        columnGap: 2,
+      }}
+    >
       {items.map((r) => (
-        <Grid item xs={12} sm={6} md={4} key={r.rulingNo}>
-          <RulingCard ruling={r} />
-        </Grid>
+        <RulingCard ruling={r} key={r.rulingNo} />
       ))}
-    </Grid>
+    </Box>
   );
 }

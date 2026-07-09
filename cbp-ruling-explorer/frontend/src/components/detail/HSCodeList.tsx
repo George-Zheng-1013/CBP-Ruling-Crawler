@@ -1,4 +1,5 @@
 import { Box, Chip, Typography } from '@mui/material';
+import { getChapterNum } from '../../utils/htsChapters';
 
 interface Props {
   mainHsCode: string;
@@ -21,9 +22,11 @@ export function HSCodeList({ mainHsCode, hsCodes }: Props) {
             —
           </Typography>
         ) : (
-          unique.map((c) => (
-            <Chip key={c} label={c} size="small" variant="outlined" />
-          ))
+          unique.map((c) => {
+            const ch = getChapterNum(c);
+            const label = ch ? `${c}  · CH${ch}` : c;
+            return <Chip key={c} label={label} size="small" variant="outlined" />;
+          })
         )}
       </Box>
     </Box>
