@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
 // 后端基地址：优先取 .env 中的 VITE_API_BASE，否则回落到本地默认。
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:9000';
 
 export interface ApiEnvelope<T> {
   code: number;

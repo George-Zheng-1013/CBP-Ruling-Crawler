@@ -48,7 +48,7 @@ _load_dotenv(ENV_FILE)
 CBP_DB_PATH: str = os.environ.get("CBP_DB_PATH", _DEFAULT_CRAWLER_DB)
 
 # ── 服务 ────────────────────────────────────────────────────────────────────
-PORT: int = int(os.environ.get("PORT", "8000"))
+PORT: int = int(os.environ.get("PORT", "9000"))
 HOST: str = os.environ.get("HOST", "127.0.0.1")
 
 # ── CORS ────────────────────────────────────────────────────────────────────

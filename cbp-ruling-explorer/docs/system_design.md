@@ -49,7 +49,7 @@
 
 ### Q4 部署方式 —— **Phase 1 本地桌面优先，Phase 2 内网 Web**
 
-- 提供 `run.py` / `npm run dev` 一键启动脚本，开发者/分析员在本机起后端(`:8000`) + 前端(`:5173`)。
+- 提供 `run.py` / `npm run dev` 一键启动脚本，开发者/分析员在本机起后端(`:9000`) + 前端(`:5173`)。
 - 内网 Web：用 `uvicorn --host 0.0.0.0` + 前端 `npm run build` 静态托管（或 nginx）。**不建议公网**（见 §8）。
 
 ### Q6 大数据量性能：LIKE vs FTS5 —— **P0 用 LIKE，预留 FTS5 扩展点**
@@ -168,7 +168,7 @@ cbp-ruling-explorer/
 ### 3.2 前后端 REST API 契约
 
 **基础约定**
-- Base URL（开发）：`http://localhost:8000`
+- Base URL（开发）：`http://localhost:9000`
 - 所有响应统一 `envelope`：`{ "code": 0, "message": "ok", "data": <T> }`（`code=0` 成功，非 0 见 §7）。
 - 分页参数：`page`（从 1 起）、`page_size`（默认 25，上限 100）。
 - 日期均返回 ISO 8601 字符串。
