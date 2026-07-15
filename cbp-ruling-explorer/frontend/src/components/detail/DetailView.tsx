@@ -1,7 +1,6 @@
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import CodeIcon from '@mui/icons-material/Code';
 import { useState } from 'react';
 import { RulingDetailFE } from '../../types/ruling';
 import { StatusBadge } from '../common/StatusBadge';
@@ -12,10 +11,9 @@ import { formatDate, formatYear } from '../../utils/format';
 
 interface Props {
   ruling: RulingDetailFE;
-  onViewHtml?: () => void;
 }
 
-export function DetailView({ ruling, onViewHtml }: Props) {
+export function DetailView({ ruling }: Props) {
   const [copied, setCopied] = useState(false);
 
   const copyNo = async () => {
@@ -97,15 +95,6 @@ export function DetailView({ ruling, onViewHtml }: Props) {
         >
           {copied ? '已复制' : '复制编号'}
         </Button>
-        {onViewHtml && (
-          <Button
-            variant="outlined"
-            startIcon={<CodeIcon />}
-            onClick={onViewHtml}
-          >
-            查看原始 HTML
-          </Button>
-        )}
       </Stack>
     </Paper>
   );

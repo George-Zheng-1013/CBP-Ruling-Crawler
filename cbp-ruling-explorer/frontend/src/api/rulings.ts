@@ -1,7 +1,6 @@
 import client, { API_BASE } from './client';
 import {
   ExportFormat,
-  HtmlContentFE,
   PageResult,
   QueryState,
   RulingDetailFE,
@@ -55,16 +54,6 @@ export async function getRulingDetail(
 /** 获取统计概览。 */
 export async function getStats(): Promise<StatsOverviewFE> {
   const res = await client.get<StatsOverviewFE>('/api/stats/overview');
-  return res.data;
-}
-
-/** 获取裁定原文 HTML（P2）。 */
-export async function getRulingHtml(
-  rulingNo: string,
-): Promise<HtmlContentFE> {
-  const res = await client.get<HtmlContentFE>(
-    `/api/rulings/${encodeURIComponent(rulingNo)}/html`,
-  );
   return res.data;
 }
 

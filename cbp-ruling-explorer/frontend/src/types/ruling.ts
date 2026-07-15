@@ -53,9 +53,3 @@ export interface QueryState {
 }
 
 export type ExportFormat = 'csv' | 'json';
-
-export interface HtmlContentFE {
-  htmlContent: string;
-  plainText: string;
-  fetchStatus: number;
-}
