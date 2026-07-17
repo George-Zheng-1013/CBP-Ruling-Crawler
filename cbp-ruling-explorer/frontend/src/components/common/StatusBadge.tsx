@@ -1,4 +1,3 @@
-import { Chip } from '@mui/material';
 import { STATUS_COLORS } from '../../theme/theme';
 import { statusLabel } from '../../utils/format';
 
@@ -10,10 +9,11 @@ interface Props {
 export function StatusBadge({ status, size = 'small' }: Props) {
   const color = STATUS_COLORS[status] ?? '#757575';
   return (
-    <Chip
-      label={statusLabel(status)}
-      size={size}
-      sx={{ backgroundColor: color, color: '#fff', fontWeight: 600 }}
-    />
+    <span
+      className={`chip chip-solid ${size === 'medium' ? 'text-xs px-2.5 py-1' : 'text-[11px] px-2 py-0.5'}`}
+      style={{ backgroundColor: color }}
+    >
+      {statusLabel(status)}
+    </span>
   );
 }

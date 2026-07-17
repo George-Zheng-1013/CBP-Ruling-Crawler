@@ -1,4 +1,3 @@
-import { Box, Typography } from '@mui/material';
 import { RulingItemFE } from '../../types/ruling';
 import { RulingCard } from './RulingCard';
 import { Loading } from '../common/Loading';
@@ -16,22 +15,17 @@ export function ResultList({ items, loading, error, onRetry }: Props) {
   if (error) return <ErrorState message={error} onRetry={onRetry} />;
   if (items.length === 0) {
     return (
-      <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
-        <Typography variant="h6">未找到匹配的裁定</Typography>
-        <Typography variant="body2">试试调整关键词或筛选条件</Typography>
-      </Box>
+      <div className="text-center py-16">
+        <p className="heading text-muted mb-1">未找到匹配的裁定</p>
+        <p className="caption">试试调整关键词或筛选条件</p>
+      </div>
     );
   }
   return (
-    <Box
-      sx={{
-        columns: { xs: 1, sm: 2, lg: 3 },
-        columnGap: 2,
-      }}
-    >
+    <div className="columns-1 sm:columns-2 lg:columns-3 gap-3 space-y-3">
       {items.map((r) => (
         <RulingCard ruling={r} key={r.rulingNo} />
       ))}
-    </Box>
+    </div>
   );
 }

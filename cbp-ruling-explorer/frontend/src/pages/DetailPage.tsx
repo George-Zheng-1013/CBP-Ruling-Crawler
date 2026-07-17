@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Box, Button } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { getRulingDetail } from '../api/rulings';
 import { RulingDetailFE } from '../types/ruling';
 import { DetailView } from '../components/detail/DetailView';
@@ -30,14 +28,13 @@ export function DetailPage() {
   }, [rulingNo]);
 
   return (
-    <Box>
-      <Button
-        startIcon={<ArrowBackIcon />}
+    <div>
+      <button
+        className="btn btn-ghost mb-3 text-sm"
         onClick={() => navigate(-1)}
-        sx={{ mb: 2 }}
       >
-        返回
-      </Button>
+        ← 返回
+      </button>
       {loading ? (
         <Loading />
       ) : error ? (
@@ -45,6 +42,6 @@ export function DetailPage() {
       ) : detail ? (
         <DetailView ruling={detail} />
       ) : null}
-    </Box>
+    </div>
   );
 }

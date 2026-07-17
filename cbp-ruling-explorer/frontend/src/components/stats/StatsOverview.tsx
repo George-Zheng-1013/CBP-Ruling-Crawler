@@ -1,4 +1,3 @@
-import { Box, Grid, Paper, Typography } from '@mui/material';
 import { StatsOverviewFE } from '../../types/ruling';
 import { YearBarChart } from './YearBarChart';
 import { StatusPieChart } from './StatusPieChart';
@@ -8,69 +7,38 @@ interface Props {
 }
 
 export function StatsOverview({ stats }: Props) {
-  return (
-    <Box>
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: 'center' }} elevation={1}>
-            <Typography variant="h4" color="primary.main" fontWeight={700}>
-              {stats.total}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              裁定总数
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: 'center' }} elevation={1}>
-            <Typography variant="h4" color="error.main" fontWeight={700}>
-              {stats.parseFailed}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              解析失败数
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: 'center' }} elevation={1}>
-            <Typography variant="h4" fontWeight={700}>
-              {stats.byYear.length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              覆盖年份
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, textAlign: 'center' }} elevation={1}>
-            <Typography variant="h4" fontWeight={700}>
-              {stats.byStatus.length}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              状态种类
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+  const cards = [
+    { value: stats.total.toLocaleString(), label: '裁定总数', color: 'text-navy' },
+    { value: stats.parseFailed.toLocaleString(), label: '解析失败数', color: 'text-red-700' },
+    { value: stats.byYear.length, label: '覆盖年份', color: '' },
+    { value: stats.byStatus.length, label: '状态种类', color: '' },
+  ];
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={7}>
-          <Paper sx={{ p: 2 }} elevation={1}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-              按年份分布
-            </Typography>
-            <YearBarChart data={stats.byYear} />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={5}>
-          <Paper sx={{ p: 2 }} elevation={1}>
-            <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-              按状态分布
-            </Typography>
-            <StatusPieChart data={stats.byStatus} />
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+  return (
+    <div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {cards.map((c) => (
+          <div key={c.label} className="card p-4 text-center">
+            <p className={`text-2xl font-bold ${c.color || 'text-gray-900'}`}>
+              {c.value}
+            </p>
+            <p className="caption mt-1">{c.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+        <div className="card p-4 md:col-span-4">
+          <h3 className="subheading mb-2">按年份分布</h3>
+          <YearBarChart data={stats.byYear} />
+        </div>
+        <div className="card p-4 md:col-span-3">
+          <h3 className="subheading mb-2">按状态分布</h3>
+          <StatusPieChart data={stats.byStatus} />
+        </div>
+      </div>
+    </div>
   );
 }

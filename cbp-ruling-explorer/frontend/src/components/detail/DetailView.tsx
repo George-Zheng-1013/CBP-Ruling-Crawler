@@ -1,6 +1,3 @@
-import { Box, Button, Paper, Stack, Typography } from '@mui/material';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useState } from 'react';
 import { RulingDetailFE } from '../../types/ruling';
 import { StatusBadge } from '../common/StatusBadge';
@@ -22,53 +19,27 @@ export function DetailView({ ruling }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // 剪贴板不可用时静默忽略。
+      /* 剪贴板不可用时静默忽略 */
     }
   };
 
   return (
-    <Paper sx={{ p: 3 }} elevation={1}>
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="flex-start"
-        flexWrap="wrap"
-        gap={1}
-      >
-        <Box>
-          <Typography
-            variant="body2"
-            sx={{
-              fontFamily: 'monospace',
-              color: 'primary.main',
-              fontWeight: 700,
-              fontSize: 18,
-            }}
-          >
-            {ruling.rulingNo}
-          </Typography>
-          <Typography variant="h5" sx={{ fontWeight: 700, mt: 0.5 }}>
-            {ruling.subject || '(无主题)'}
-          </Typography>
-        </Box>
+    <div className="card p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex justify-between items-start flex-wrap gap-2">
+        <div>
+          <p className="mono text-navy font-bold text-lg">{ruling.rulingNo}</p>
+          <h1 className="heading mt-1">{ruling.subject || '(无主题)'}</h1>
+        </div>
         <StatusBadge status={ruling.status} size="medium" />
-      </Stack>
+      </div>
 
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 3,
-          mt: 2,
-          flexWrap: 'wrap',
-          color: 'text.secondary',
-        }}
-      >
-        <Typography variant="body2">年份：{formatYear(ruling.year)}</Typography>
-        <Typography variant="body2">
-          裁定日期：{formatDate(ruling.rulingDate)}
-        </Typography>
-        <Typography variant="body2">状态：{ruling.status}</Typography>
-      </Box>
+      {/* Meta */}
+      <div className="flex gap-5 mt-3 caption flex-wrap">
+        <span>年份：{formatYear(ruling.year)}</span>
+        <span>裁定日期：{formatDate(ruling.rulingDate)}</span>
+        <span>状态：{ruling.status}</span>
+      </div>
 
       <HSCodeList mainHsCode={ruling.hsCode} hsCodes={ruling.hsCodes} />
 
@@ -76,26 +47,27 @@ export function DetailView({ ruling }: Props) {
 
       <DescriptionPanel text={ruling.description} />
 
-      <Stack direction="row" spacing={2} sx={{ mt: 3 }} flexWrap="wrap">
+      {/* Actions */}
+      <div className="flex gap-3 mt-4 flex-wrap">
         {ruling.detailUrl && (
-          <Button
-            variant="contained"
-            startIcon={<OpenInNewIcon />}
+          <a
+            className="btn btn-primary text-sm"
             href={ruling.detailUrl}
             target="_blank"
             rel="noreferrer"
           >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
             打开官方链接
-          </Button>
+          </a>
         )}
-        <Button
-          variant="outlined"
-          startIcon={<ContentCopyIcon />}
-          onClick={copyNo}
-        >
+        <button className="btn btn-outline text-sm" onClick={copyNo}>
           {copied ? '已复制' : '复制编号'}
-        </Button>
-      </Stack>
-    </Paper>
+        </button>
+      </div>
+    </div>
   );
 }

@@ -1,14 +1,3 @@
-import {
-  Box,
-  Button,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  TextField,
-} from '@mui/material';
-import ClearAllIcon from '@mui/icons-material/ClearAll';
 import { useQueryStore } from '../../store/queryStore';
 
 interface Props {
@@ -26,59 +15,54 @@ export function FilterPanel({ yearOptions, statusOptions }: Props) {
   const reset = useQueryStore((s) => s.reset);
 
   return (
-    <Paper sx={{ p: 2 }} elevation={1}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <FormControl size="small" fullWidth>
-          <InputLabel id="year-label">年份</InputLabel>
-          <Select
-            labelId="year-label"
-            label="年份"
-            value={year ?? ''}
-            onChange={(e) => setYear(e.target.value ? Number(e.target.value) : null)}
-          >
-            <MenuItem value="">全部</MenuItem>
-            {yearOptions.map((y) => (
-              <MenuItem key={y} value={y}>
-                {y}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+    <div className="card p-3 flex flex-col gap-3">
+      <div>
+        <label className="caption block mb-1">年份</label>
+        <select
+          className="select w-full"
+          value={year ?? ''}
+          onChange={(e) =>
+            setYear(e.target.value ? Number(e.target.value) : null)
+          }
+        >
+          <option value="">全部</option>
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <FormControl size="small" fullWidth>
-          <InputLabel id="status-label">状态</InputLabel>
-          <Select
-            labelId="status-label"
-            label="状态"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <MenuItem value="">全部</MenuItem>
-            {statusOptions.map((s) => (
-              <MenuItem key={s} value={s}>
-                {s}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+      <div>
+        <label className="caption block mb-1">状态</label>
+        <select
+          className="select w-full"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">全部</option>
+          {statusOptions.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <TextField
-          label="HS Code 前缀"
+      <div>
+        <label className="caption block mb-1">HS Code 前缀</label>
+        <input
+          className="input w-full"
           placeholder="如 8517"
-          size="small"
           value={hsCode}
           onChange={(e) => setHsCode(e.target.value.trim())}
         />
+      </div>
 
-        <Button
-          variant="text"
-          startIcon={<ClearAllIcon />}
-          onClick={reset}
-          color="inherit"
-        >
-          清除筛选
-        </Button>
-      </Box>
-    </Paper>
+      <button className="btn btn-ghost text-sm !text-muted" onClick={reset}>
+        清除筛选
+      </button>
+    </div>
   );
 }

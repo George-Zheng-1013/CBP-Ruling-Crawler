@@ -1,15 +1,3 @@
-import {
-  Card,
-  CardActionArea,
-  CardContent,
-  Box,
-  Typography,
-  IconButton,
-  Tooltip,
-  Chip,
-} from '@mui/material';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import { useNavigate } from 'react-router-dom';
 import { RulingItemFE } from '../../types/ruling';
 import { StatusBadge } from '../common/StatusBadge';
@@ -28,65 +16,54 @@ export function RulingCard({ ruling }: Props) {
   const hsCodes = ruling.hsCodes?.filter(Boolean) || [];
 
   return (
-    <Card elevation={1} sx={{ position: 'relative', breakInside: 'avoid', mb: 2 }}>
-      <CardActionArea
+    <div className="card card-interactive mb-3 break-inside-avoid relative">
+      {/* Favorite button */}
+      <button
+        className="absolute top-2 right-2 p-1.5 rounded-full hover:bg-black/5 transition z-10"
+        onClick={(e) => {
+          e.stopPropagation();
+          toggle(ruling.rulingNo);
+        }}
+        aria-label={isFav ? '取消收藏' : '收藏'}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill={isFav ? '#ED6C02' : 'none'}
+          stroke={isFav ? '#ED6C02' : '#86868b'}
+          strokeWidth="2"
+        >
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      </button>
+
+      {/* Clickable body */}
+      <button
+        className="text-left w-full p-3 cursor-pointer block"
         onClick={() => navigate(`/ruling/${encodeURIComponent(ruling.rulingNo)}`)}
       >
-        <CardContent>
-          <Typography
-            variant="body2"
-            sx={{ fontFamily: 'monospace', color: 'primary.main', fontWeight: 700 }}
-          >
-            {ruling.rulingNo}
-          </Typography>
-          <Typography
-            variant="subtitle1"
-            sx={{
-              fontWeight: 600,
-              mt: 0.5,
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {ruling.subject || '(无主题)'}
-          </Typography>
-          <Box
-            sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 1, flexWrap: 'wrap' }}
-          >
-            <Typography variant="caption" color="text.secondary">
-              {ruling.year || '—'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">·</Typography>
-            <StatusBadge status={ruling.status} />
-            {ruling.parseFailed && (
-              <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 700 }}>
-                解析失败
-              </Typography>
-            )}
-          </Box>
-          {hsCodes.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 1.5 }}>
-              {chapterLabel && (
-                <Chip label={chapterLabel} size="small" color="primary" variant="outlined" sx={{ fontWeight: 500 }} />
-              )}
-              {hsCodes.map((code) => (
-                <Chip key={code} label={code} size="small" variant="outlined" sx={{ fontFamily: 'monospace' }} />
-              ))}
-            </Box>
+        <p className="mono text-navy font-bold text-sm">{ruling.rulingNo}</p>
+        <p className="subheading line-clamp-3 mt-1">{ruling.subject || '(无主题)'}</p>
+        <div className="flex gap-2 items-center mt-2 flex-wrap">
+          <span className="caption">{ruling.year || '—'}</span>
+          <span className="caption">·</span>
+          <StatusBadge status={ruling.status} />
+          {ruling.parseFailed && (
+            <span className="text-xs text-red-700 font-bold">解析失败</span>
           )}
-        </CardContent>
-      </CardActionArea>
-      <Tooltip title={isFav ? '取消收藏' : '收藏'}>
-        <IconButton
-          size="small"
-          sx={{ position: 'absolute', top: 8, right: 8 }}
-          onClick={() => toggle(ruling.rulingNo)}
-        >
-          {isFav ? <StarIcon color="warning" /> : <StarBorderIcon />}
-        </IconButton>
-      </Tooltip>
-    </Card>
+        </div>
+        {hsCodes.length > 0 && (
+          <div className="flex gap-1 flex-wrap mt-2">
+            {chapterLabel && (
+              <span className="chip chip-accent text-xs">{chapterLabel}</span>
+            )}
+            {hsCodes.map((code) => (
+              <span key={code} className="chip text-xs font-mono">{code}</span>
+            ))}
+          </div>
+        )}
+      </button>
+    </div>
   );
 }

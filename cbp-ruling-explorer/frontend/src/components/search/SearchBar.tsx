@@ -1,5 +1,3 @@
-import { Box, Button, Paper, TextField } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import { useState } from 'react';
 import { useQueryStore } from '../../store/queryStore';
 
@@ -18,37 +16,28 @@ export function SearchBar() {
   };
 
   return (
-    <Paper sx={{ p: 2, mb: 2 }} elevation={1}>
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 2,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <TextField
-          label="关键词"
-          placeholder="匹配主题或全文描述"
-          value={kw}
-          onChange={(e) => setKw(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          size="small"
-          sx={{ flex: 1, minWidth: 240 }}
-        />
-        <TextField
-          label="裁定编号"
-          placeholder="如 N12345"
-          value={no}
-          onChange={(e) => setNo(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          size="small"
-          sx={{ width: 200 }}
-        />
-        <Button variant="contained" startIcon={<SearchIcon />} onClick={submit}>
-          搜索
-        </Button>
-      </Box>
-    </Paper>
+    <div className="card p-3 flex flex-wrap gap-3 items-center">
+      <input
+        className="input flex-1 min-w-[200px]"
+        placeholder="关键词 — 匹配主题或全文描述"
+        value={kw}
+        onChange={(e) => setKw(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+      />
+      <input
+        className="input w-[180px]"
+        placeholder="裁定编号 — 如 N12345"
+        value={no}
+        onChange={(e) => setNo(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+      />
+      <button className="btn btn-primary" onClick={submit}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        搜索
+      </button>
+    </div>
   );
 }

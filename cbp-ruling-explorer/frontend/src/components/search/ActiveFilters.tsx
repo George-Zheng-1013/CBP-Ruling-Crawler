@@ -1,5 +1,3 @@
-import { Box, Chip } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
 import { useQueryStore } from '../../store/queryStore';
 
 export function ActiveFilters() {
@@ -25,16 +23,19 @@ export function ActiveFilters() {
   if (chips.length === 0) return null;
 
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+    <div className="flex flex-wrap gap-2 mb-3">
       {chips.map((c) => (
-        <Chip
-          key={c.key}
-          label={c.label}
-          onDelete={c.onDelete}
-          deleteIcon={<CloseIcon />}
-          size="small"
-        />
+        <span key={c.key} className="chip chip-accent">
+          {c.label}
+          <button
+            className="ml-1 hover:text-navy cursor-pointer"
+            onClick={c.onDelete}
+            aria-label="移除"
+          >
+            ×
+          </button>
+        </span>
       ))}
-    </Box>
+    </div>
   );
 }

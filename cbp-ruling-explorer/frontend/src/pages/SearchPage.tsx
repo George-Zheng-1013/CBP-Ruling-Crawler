@@ -1,4 +1,3 @@
-import { Box, Grid, Typography } from '@mui/material';
 import { useRulings } from '../hooks/useRulings';
 import { useStats } from '../hooks/useStats';
 import { useQueryStore } from '../store/queryStore';
@@ -20,30 +19,25 @@ export function SearchPage() {
   const statusOptions = (stats?.byStatus ?? []).map((s) => s.status);
 
   return (
-    <Grid container spacing={2}>
-      <Grid item xs={12}>
-        <SearchBar />
-      </Grid>
-      <Grid item xs={12} md={3}>
+    <div className="flex flex-col md:flex-row gap-4">
+      {/* Sidebar */}
+      <aside className="md:w-56 shrink-0">
         <FilterPanel yearOptions={yearOptions} statusOptions={statusOptions} />
-      </Grid>
-      <Grid item xs={12} md={9}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            mb: 1,
-            flexWrap: 'wrap',
-            gap: 1,
-          }}
-        >
-          <Typography variant="body2" color="text.secondary">
-            {data && !loading ? `共 ${data.total} 条结果` : ' '}
-          </Typography>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 min-w-0">
+        <SearchBar />
+
+        <div className="flex justify-between items-center mb-3 mt-4 flex-wrap gap-2">
+          <span className="caption">
+            {data && !loading ? `共 ${data.total.toLocaleString()} 条结果` : '\u00A0'}
+          </span>
           <ExportButton />
-        </Box>
+        </div>
+
         <ActiveFilters />
+
         {!data && loading ? (
           <Loading />
         ) : error ? (
@@ -59,7 +53,7 @@ export function SearchPage() {
             {data && <Pagination result={data} />}
           </>
         )}
-      </Grid>
-    </Grid>
+      </div>
+    </div>
   );
 }

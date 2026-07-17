@@ -1,37 +1,27 @@
-import { Alert, AlertTitle, Box } from '@mui/material';
 import { Component, ErrorInfo, ReactNode } from 'react';
 
-interface BoundaryProps {
+interface Props {
   children: ReactNode;
 }
-interface BoundaryState {
+interface State {
   hasError: boolean;
   message: string;
 }
 
-/** 渲染期错误的错误边界。 */
-export class ErrorBoundary extends Component<BoundaryProps, BoundaryState> {
-  state: BoundaryState = { hasError: false, message: '' };
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false, message: '' };
 
-  static getDerivedStateFromError(error: Error): BoundaryState {
+  static getDerivedStateFromError(error: Error): State {
     return { hasError: true, message: error.message };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // eslint-disable-next-line no-console
     console.error('ErrorBoundary caught:', error, info);
   }
 
   render() {
     if (this.state.hasError) {
-      return (
-        <Box sx={{ p: 3 }}>
-          <Alert severity="error">
-            <AlertTitle>出错了</AlertTitle>
-            {this.state.message}
-          </Alert>
-        </Box>
-      );
+      return <ErrorState message={this.state.message} />;
     }
     return this.props.children;
   }
@@ -42,24 +32,19 @@ interface ErrorStateProps {
   onRetry?: () => void;
 }
 
-/** 获取失败时的错误提示（可点击重试）。 */
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <Alert
-      severity="error"
-      action={
-        onRetry ? (
-          <Box
-            component="span"
-            onClick={onRetry}
-            sx={{ cursor: 'pointer', fontWeight: 600 }}
-          >
-            重试
-          </Box>
-        ) : undefined
-      }
-    >
-      {message}
-    </Alert>
+    <div className="p-4 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+      <p className="font-semibold mb-1">出错了</p>
+      <p>{message}</p>
+      {onRetry && (
+        <button
+          className="mt-2 text-red-700 font-semibold underline cursor-pointer hover:opacity-80"
+          onClick={onRetry}
+        >
+          重试
+        </button>
+      )}
+    </div>
   );
 }

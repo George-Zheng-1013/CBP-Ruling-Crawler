@@ -17,7 +17,13 @@ export function StatusPieChart({ data }: Props) {
   return (
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
-        <Pie data={data} dataKey="count" nameKey="status" outerRadius={100} label>
+        <Pie
+          data={data}
+          dataKey="count"
+          nameKey="status"
+          outerRadius={100}
+          label
+        >
           {data.map((entry) => (
             <Cell
               key={entry.status}

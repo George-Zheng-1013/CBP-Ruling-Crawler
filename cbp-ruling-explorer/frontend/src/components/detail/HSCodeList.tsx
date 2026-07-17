@@ -1,4 +1,3 @@
-import { Box, Chip, Typography } from '@mui/material';
 import { getChapterNum } from '../../utils/htsChapters';
 
 interface Props {
@@ -11,24 +10,25 @@ export function HSCodeList({ mainHsCode, hsCodes }: Props) {
     ? [mainHsCode, ...hsCodes.filter((c) => c !== mainHsCode)]
     : hsCodes;
   const unique = Array.from(new Set(all.filter(Boolean)));
+
   return (
-    <Box sx={{ mt: 1 }}>
-      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-        HS Code
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+    <div className="mt-3">
+      <p className="caption mb-1.5">HS Code</p>
+      <div className="flex flex-wrap gap-1.5">
         {unique.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            —
-          </Typography>
+          <span className="caption">—</span>
         ) : (
           unique.map((c) => {
             const ch = getChapterNum(c);
-            const label = ch ? `${c}  · CH${ch}` : c;
-            return <Chip key={c} label={label} size="small" variant="outlined" />;
+            const label = ch ? `${c} · CH${ch}` : c;
+            return (
+              <span key={c} className="chip text-xs font-mono">
+                {label}
+              </span>
+            );
           })
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }
