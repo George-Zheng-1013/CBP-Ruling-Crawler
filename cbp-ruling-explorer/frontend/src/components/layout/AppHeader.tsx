@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { startIncremental, startSync } from '../../api/crawl';
@@ -93,7 +93,7 @@ export function AppHeader() {
 
   return (
     <>
-      <header className="glass-heavy sticky top-0 z-40 border-b border-white/20">
+      <header className="bg-navy sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-12 flex items-center gap-1">
           {/* Brand */}
           <Link to="/" className="text-white font-bold text-[15px] tracking-tight mr-3 shrink-0">
@@ -152,10 +152,12 @@ function Toast({
   ok: boolean;
   onDone: () => void;
 }) {
-  useEffect(() => {
-    const t = setTimeout(onDone, 5000);
-    return () => clearTimeout(t);
-  }, [onDone]);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  // ponytail: 仅 mount 时设一次定时器，避免每次渲染重置
+  if (!timerRef.current) {
+    timerRef.current = setTimeout(onDone, 5000);
+  }
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
