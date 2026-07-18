@@ -90,6 +90,21 @@ def _detect_latest_date() -> Optional[str]:
         return None
 
 
+def _sync_rag_after_crawl() -> Optional[str]:
+    """Best-effort incremental RAG sync after a successful crawl."""
+    from app.config import EMBEDDING_API_KEY, EMBEDDING_MODEL
+
+    if not EMBEDDING_API_KEY or not EMBEDDING_MODEL:
+        return "Crawl completed; RAG sync skipped because model embedding configuration is incomplete."
+    try:
+        from app.rag import RagIndex
+
+        RagIndex().sync_rulings()
+        return None
+    except Exception as exc:
+        return f"Crawl completed; RAG sync failed: {exc}"
+
+
 def _run_crawl(min_date: str) -> None:
     """在后台线程中执行爬虫子进程。"""
     cmd = [
@@ -133,8 +148,10 @@ def _run_crawl(min_date: str) -> None:
 
         # 检查退出码
         if proc.returncode == 0:
+            index_warning = _sync_rag_after_crawl()
             with _job_lock:
                 _job["status"] = "completed"
+                _job["error_message"] = index_warning
                 _job["completed_at"] = datetime.now().isoformat(timespec="seconds")
         else:
             # 读取最后的错误输出

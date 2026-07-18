@@ -29,6 +29,8 @@ function NavButton({
 export function AppHeader() {
   const location = useLocation();
   const isSearch = location.pathname === '/';
+  const isClassify = location.pathname === '/classify';
+  const isStats = location.pathname === '/stats';
 
   const [crawlRunning, setCrawlRunning] = useState(false);
   const [crawlType, setCrawlType] = useState<'incremental' | 'sync' | null>(null);
@@ -104,7 +106,8 @@ export function AppHeader() {
 
           {/* Nav */}
           <NavButton to="/" label="查询" active={isSearch} />
-          <NavButton to="/stats" label="统计概览" active={!isSearch} />
+          <NavButton to="/classify" label="智能归类" active={isClassify} />
+          <NavButton to="/stats" label="统计概览" active={isStats} />
 
           {/* Separator */}
           <div className="w-px h-4 bg-white/20 mx-2" />

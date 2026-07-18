@@ -327,3 +327,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 /.workbuddy
+
+# Local model credentials and generated RAG index
+cbp-ruling-explorer/backend/config.json
+cbp-ruling-explorer/data/rag/

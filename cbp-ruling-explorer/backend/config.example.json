@@ -1,0 +1,52 @@
+{
+    "database":  {
+                     "cbp_path":  "../../cbp-crawler/data/db/cbp_rulings.db",
+                     "rag_index_path":  "../data/rag/rag_index.db"
+                 },
+    "server":  {
+                   "host":  "127.0.0.1",
+                   "port":  9000,
+                   "cors_origins":  [
+                                        "http://localhost:5173"
+                                    ]
+               },
+    "crawler":  {
+                    "python":  "D:\\Develop\\miniconda\\envs\\py312\\python.exe",
+                    "main_dir":  "../../cbp-crawler",
+                    "timeout_seconds":  43200
+                },
+    "models":  {
+                   "chat":  {
+                                "base_url":  "https://api.openai.com/v1/chat/completions",
+                                "api_key":  "",
+                                "model":  "",
+                                "timeout_seconds":  120
+                            },
+                   "embedding":  {
+                                     "base_url":  "https://api.openai.com/v1/embeddings",
+                                     "api_key":  "",
+                                     "model":  "",
+                                     "timeout_seconds":  120,
+                                     "batch_size":  64
+                                 },
+                   "reranker":  {
+                                    "base_url":  "",
+                                    "api_key":  "",
+                                    "model":  "",
+                                    "timeout_seconds":  120
+                                }
+               },
+    "retrieval":  {
+                      "chunk_chars":  2400,
+                      "chunk_overlap":  200,
+                      "keyword_top_k":  40,
+                      "vector_top_k":  40,
+                      "rerank_top_k":  20,
+                      "evidence_top_k":  8,
+                      "excerpt_chars":  900
+                  },
+    "hts":  {
+                "version":  "2026 Revision 11",
+                "json_url":  "https://www.usitc.gov/sites/default/files/tata/hts/hts_2026_revision_11_json.json"
+            }
+}
