@@ -166,6 +166,18 @@ class DatabaseManager:
         stats["by_status"] = [
             {"status": r["status"], "count": r["c"]} for r in status_rows
         ]
+        chapter_counts: Dict[str, int] = {}
+        for row in conn.execute("SELECT hs_code FROM rulings WHERE hs_code IS NOT NULL"):
+            digits = "".join(char for char in (row["hs_code"] or "") if char.isdigit())
+            if len(digits) >= 2:
+                chapter = digits[:2]
+                chapter_counts[chapter] = chapter_counts.get(chapter, 0) + 1
+        stats["by_chapter"] = [
+            {"chapter": chapter, "count": count}
+            for chapter, count in sorted(
+                chapter_counts.items(), key=lambda item: (-item[1], item[0])
+            )
+        ]
         return stats
 
     def fetch_html(self, ruling_no: str) -> Optional[Dict[str, Any]]:

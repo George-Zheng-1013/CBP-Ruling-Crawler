@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 
 from app.db import DatabaseManager
-from app.schemas import Envelope, StatusCount, StatsOverview, YearCount
+from app.schemas import ChapterCount, Envelope, StatusCount, StatsOverview, YearCount
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -18,5 +18,6 @@ def stats_overview() -> Envelope[StatsOverview]:
         parse_failed=raw["parse_failed"],
         by_year=[YearCount(**y) for y in raw["by_year"]],
         by_status=[StatusCount(**s) for s in raw["by_status"]],
+        by_chapter=[ChapterCount(**item) for item in raw["by_chapter"]],
     )
     return Envelope(data=overview)

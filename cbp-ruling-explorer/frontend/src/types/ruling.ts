@@ -27,12 +27,17 @@ export interface StatusCountFE {
   status: string;
   count: number;
 }
+export interface ChapterCountFE {
+  chapter: string;
+  count: number;
+}
 
 export interface StatsOverviewFE {
   total: number;
   parseFailed: number;
   byYear: YearCountFE[];
   byStatus: StatusCountFE[];
+  byChapter: ChapterCountFE[];
 }
 
 export interface PageResult<T> {

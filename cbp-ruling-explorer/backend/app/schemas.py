@@ -95,6 +95,12 @@ class StatusCount(BaseModel):
     status: str
     count: int
 
+class ChapterCount(BaseModel):
+    """按 HTS Chapter（税号前两位）计数。"""
+
+    chapter: str
+    count: int
+
 
 class StatsOverview(BaseModel):
     """统计概览。"""
@@ -103,6 +109,7 @@ class StatsOverview(BaseModel):
     parse_failed: int = 0
     by_year: List[YearCount] = Field(default_factory=list)
     by_status: List[StatusCount] = Field(default_factory=list)
+    by_chapter: List[ChapterCount] = Field(default_factory=list)
 
 
 T = TypeVar("T")

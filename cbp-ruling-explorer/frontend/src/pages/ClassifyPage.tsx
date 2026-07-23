@@ -22,6 +22,19 @@ const EMPTY: ProductClassificationInput = {
 
 const confidenceLabel = { high: '高', medium: '中', low: '低' };
 
+const PROGRESS_STAGES = [
+  '整理商品特征与生成检索查询',
+  '检索 CBP 裁定案例',
+  '使用专用模型重排序',
+  '校验现行 USITC HTS 税号',
+  '生成中文归类结论与引用',
+];
+const rulingStatusLabel: Record<string, string> = {
+  active: '有效',
+  revoked: '已撤销',
+  modified: '已修改',
+};
+
 function splitList(value: string): string[] {
   return value.split(/[,，;；\n]/).map((item) => item.trim()).filter(Boolean);
 }
@@ -55,11 +68,20 @@ export function ClassifyPage() {
   const [index, setIndex] = useState<RagIndexStatus | null>(null);
   const [result, setResult] = useState<ClassificationResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progressStep, setProgressStep] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
     getRagIndexStatus().then(setIndex).catch((err: Error) => setError(err.message));
   }, []);
+  useEffect(() => {
+    if (!loading) return;
+    setProgressStep(0);
+    const timer = window.setInterval(() => {
+      setProgressStep((current) => Math.min(current + 1, PROGRESS_STAGES.length - 1));
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   const update = (key: keyof ProductClassificationInput, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -154,12 +176,49 @@ export function ClassifyPage() {
       </form>
 
       {error && <div className="card p-4 text-red-700 body">{error}</div>}
-      {loading && <div className="card p-8 text-center"><div className="spinner mx-auto" /></div>}
+      {loading && <ClassificationProgress activeStep={progressStep} />}
       {result && <ResultView result={result} />}
     </div>
   );
 }
 
+function ClassificationProgress({ activeStep }: { activeStep: number }) {
+  const width = `${Math.min(92, 12 + activeStep * 20)}%`;
+
+  return (
+    <section className="card p-5 sm:p-6" aria-live="polite">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="heading">正在进行智能归类</h2>
+        <span className="caption">阶段进度</span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-100 overflow-hidden mt-4">
+        <div
+          className="h-full rounded-full bg-blue transition-all duration-700"
+          style={{ width }}
+        />
+      </div>
+      <ol className="mt-4 space-y-2">
+        {PROGRESS_STAGES.map((stage, index) => {
+          const active = index === activeStep;
+          const complete = index < activeStep;
+          return (
+            <li
+              key={stage}
+              className={`body flex items-center gap-2 ${
+                active ? 'text-blue font-medium' : complete ? 'text-green-700' : 'text-gray-400'
+              }`}
+            >
+              <span aria-hidden="true">{complete ? '✓' : active ? '●' : '○'}</span>
+              <span>{stage}</span>
+              {active && <span className="caption">处理中</span>}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="caption mt-4">各阶段耗时取决于模型服务和检索规模，完成后会自动显示结果。</p>
+    </section>
+  );
+}
 function ResultView({ result }: { result: ClassificationResult }) {
   return (
     <div className="space-y-5">
@@ -219,7 +278,7 @@ function ResultView({ result }: { result: ClassificationResult }) {
               <div className="flex flex-wrap gap-2 items-center">
                 <Link className="mono font-bold text-blue hover:underline"
                   to={`/ruling/${item.rulingNo}`}>{item.rulingNo}</Link>
-                <span className="chip">{item.status}</span>
+                <span className="chip">{rulingStatusLabel[item.status] ?? item.status}</span>
                 {item.hsCodes.map((code) => <span className="chip chip-accent mono" key={code}>{code}</span>)}
               </div>
               <p className="subheading mt-2">{item.subject}</p>

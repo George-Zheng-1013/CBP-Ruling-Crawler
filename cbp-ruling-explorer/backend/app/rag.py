@@ -707,7 +707,9 @@ class ClassificationService:
             (
                 "You convert a Chinese or English product description into an English "
                 "CBP ruling retrieval query. Use only supplied facts. Return JSON with "
-                "english_query (string), keywords (array), and missing_information (array)."
+                "english_query (string), keywords (array), and missing_information (array). "
+                "english_query and keywords must be English for retrieval; every item in "
+                "missing_information must be written in Simplified Chinese."
             ),
             product,
         )
@@ -764,7 +766,10 @@ class ClassificationService:
                 "(array of at most 3 objects: hts_code, reason), used_ruling_numbers "
                 "(array containing only supplied ruling numbers), missing_information, and "
                 "reference_analysis (array of objects with ruling_no, similarities, and "
-                "differences for each actually used ruling)."
+                "differences for each actually used ruling). All generated explanatory "
+                "content must be in Simplified Chinese, including basis, alternative reason, "
+                "missing_information, similarities, and differences. Keep ruling numbers, "
+                "HTS codes, official HTS descriptions, and quoted CBP evidence unchanged."
             ),
             {
                 "product": product,
