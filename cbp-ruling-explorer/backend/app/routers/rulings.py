@@ -6,22 +6,31 @@
 import csv
 import io
 import json
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.db import DatabaseManager
-from app.errors import NotFoundError
+from app.errors import NotFoundError, UpstreamError
 from app.schemas import (
     Envelope,
     HtmlContent,
     PageResult,
+    PdfBatchDownloadRequest,
+    PdfBatchDownloadResult,
+    PdfDownloadFailure,
     RulingDetail,
     RulingListItem,
     SearchParams,
 )
 from app.services.search_service import SearchService
+from app.services.pdf_service import (
+    REFERENCE_CASES_DIR,
+    create_batch_directory,
+    fetch_ruling_pdf,
+)
 
 router = APIRouter(prefix="/api/rulings", tags=["rulings"])
 
@@ -102,6 +111,73 @@ def export_rulings(
         media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": 'attachment; filename="cbp_rulings.csv"'
+        },
+    )
+
+
+@router.post("/download-pdfs", summary="保存多个案例 PDF 到本机")
+def download_ruling_pdfs(
+    body: PdfBatchDownloadRequest,
+) -> Envelope[PdfBatchDownloadResult]:
+    """逐份下载引用案例，并保存到产品名和时间组成的目录。"""
+    ruling_numbers = list(
+        dict.fromkeys(
+            number.strip().upper()
+            for number in body.ruling_numbers
+            if number.strip()
+        )
+    )
+    batch_dir = create_batch_directory(body.product_name, REFERENCE_CASES_DIR)
+    downloaded: list[str] = []
+    failed: list[PdfDownloadFailure] = []
+
+    for ruling_no in ruling_numbers:
+        row = _db.fetch_ruling_by_no(ruling_no)
+        if row is None:
+            failed.append(
+                PdfDownloadFailure(ruling_no=ruling_no, reason="本地案例库中不存在")
+            )
+            continue
+        try:
+            content = fetch_ruling_pdf(row["ruling_no"])
+            (batch_dir / f"{row['ruling_no']}.pdf").write_bytes(content)
+            downloaded.append(row["ruling_no"])
+        except (OSError, UpstreamError):
+            failed.append(
+                PdfDownloadFailure(ruling_no=ruling_no, reason="CBP 官方 PDF 获取失败")
+            )
+
+    if not downloaded:
+        try:
+            batch_dir.rmdir()
+            Path(batch_dir.parent).rmdir()
+        except OSError:
+            pass
+        raise UpstreamError("所有参考案例 PDF 均下载失败")
+
+    return Envelope(
+        data=PdfBatchDownloadResult(
+            directory=str(batch_dir),
+            downloaded=downloaded,
+            failed=failed,
+        )
+    )
+
+
+@router.get("/{ruling_no}/pdf", summary="下载单个案例 PDF")
+def ruling_pdf(ruling_no: str) -> Response:
+    """从 CBP 官方接口获取 PDF，并以附件形式返回。"""
+    row = _db.fetch_ruling_by_no(ruling_no.strip().upper())
+    if row is None:
+        raise NotFoundError(f"ruling {ruling_no} not found")
+    content = fetch_ruling_pdf(row["ruling_no"])
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{row["ruling_no"]}.pdf"'
+            )
         },
     )
 

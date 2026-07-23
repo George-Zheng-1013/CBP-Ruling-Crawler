@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { classifyProduct, getRagIndexStatus } from '../api/classify';
+import { saveReferencePdfs } from '../api/rulings';
 import type {
   ClassificationResult,
   ProductClassificationInput,
@@ -67,6 +68,7 @@ export function ClassifyPage() {
   });
   const [index, setIndex] = useState<RagIndexStatus | null>(null);
   const [result, setResult] = useState<ClassificationResult | null>(null);
+  const [resultProductName, setResultProductName] = useState('');
   const [loading, setLoading] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
   const [error, setError] = useState('');
@@ -99,7 +101,9 @@ export function ClassifyPage() {
         components: splitList(listFields.components),
         functions: splitList(listFields.functions),
       };
-      setResult(await classifyProduct(input));
+      const classification = await classifyProduct(input);
+      setResult(classification);
+      setResultProductName(input.productName.trim());
     } catch (err) {
       setError(err instanceof Error ? err.message : '归类请求失败');
     } finally {
@@ -137,9 +141,9 @@ export function ClassifyPage() {
           </Field>
         </div>
 
-        <Field label="完整产品描述" required>
+        <Field label="完整产品描述">
           <textarea className="input w-full min-h-32 resize-y" value={form.description}
-            onChange={(e) => update('description', e.target.value)} required minLength={10}
+            onChange={(e) => update('description', e.target.value)}
             placeholder="描述商品的结构、工作原理、进口时状态、功能和使用场景。" />
         </Field>
 
@@ -177,7 +181,7 @@ export function ClassifyPage() {
 
       {error && <div className="card p-4 text-red-700 body">{error}</div>}
       {loading && <ClassificationProgress activeStep={progressStep} />}
-      {result && <ResultView result={result} />}
+      {result && <ResultView result={result} productName={resultProductName} />}
     </div>
   );
 }
@@ -219,7 +223,31 @@ function ClassificationProgress({ activeStep }: { activeStep: number }) {
     </section>
   );
 }
-function ResultView({ result }: { result: ClassificationResult }) {
+function ResultView({ result, productName }: { result: ClassificationResult; productName: string }) {
+  const [savingPdfs, setSavingPdfs] = useState(false);
+  const [pdfMessage, setPdfMessage] = useState('');
+  const [pdfError, setPdfError] = useState('');
+
+  const downloadAllPdfs = async () => {
+    setSavingPdfs(true);
+    setPdfMessage('');
+    setPdfError('');
+    try {
+      const saved = await saveReferencePdfs(
+        productName,
+        result.references.map((item) => item.rulingNo),
+      );
+      const failure = saved.failed.length > 0
+        ? `；失败：${saved.failed.map((item) => item.rulingNo).join('、')}`
+        : '';
+      setPdfMessage(`已保存 ${saved.downloaded.length} 份 PDF：${saved.directory}${failure}`);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : '参考案例 PDF 保存失败');
+    } finally {
+      setSavingPdfs(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {result.warnings.map((warning) => (
@@ -271,7 +299,23 @@ function ResultView({ result }: { result: ClassificationResult }) {
       )}
 
       <section className="space-y-3">
-        <h2 className="heading">参考案例（{result.references.length}）</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="heading">参考案例（{result.references.length}）</h2>
+          {result.references.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-primary text-sm"
+              onClick={downloadAllPdfs}
+              disabled={savingPdfs}
+            >
+              {savingPdfs
+                ? `正在保存 ${result.references.length} 份 PDF…`
+                : '下载全部 PDF'}
+            </button>
+          )}
+        </div>
+        {pdfMessage && <p className="body text-green-700 break-all" aria-live="polite">{pdfMessage}</p>}
+        {pdfError && <p className="body text-red-700" role="alert">{pdfError}</p>}
         {result.references.map((item) => (
           <details key={item.rulingNo} className="card p-4">
             <summary className="cursor-pointer list-none">

@@ -1,9 +1,17 @@
 def test_classify_validation(client):
     response = client.post(
         "/api/classify",
-        json={"product_name": "Cable", "description": "too short"},
+        json={"product_name": "", "description": ""},
     )
     assert response.status_code == 400
+
+
+def test_product_description_is_optional_and_has_no_minimum():
+    from app.classification_schemas import ProductClassificationRequest
+
+    assert ProductClassificationRequest(product_name="Cable").description == ""
+    assert ProductClassificationRequest(product_name="Cable", description="x").description == "x"
+    assert len(ProductClassificationRequest(product_name="Cable", description="x" * 20000).description) == 20000
 
 
 def test_classify_response_and_references(client, monkeypatch):

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { buildRulingPdfUrl } from '../../api/rulings';
 import { RulingDetailFE } from '../../types/ruling';
 import { StatusBadge } from '../common/StatusBadge';
 import { DescriptionPanel } from './DescriptionPanel';
@@ -67,6 +68,18 @@ export function DetailView({ ruling }: Props) {
         <button className="btn btn-outline text-sm" onClick={copyNo}>
           {copied ? '已复制' : '复制编号'}
         </button>
+        <a
+          className="btn btn-outline text-sm"
+          href={buildRulingPdfUrl(ruling.rulingNo)}
+          download={`${ruling.rulingNo}.pdf`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 3v12" />
+            <polyline points="7 10 12 15 17 10" />
+            <path d="M5 21h14" />
+          </svg>
+          下载 PDF
+        </a>
       </div>
     </div>
   );

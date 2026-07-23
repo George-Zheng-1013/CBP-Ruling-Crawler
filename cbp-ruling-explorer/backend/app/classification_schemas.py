@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 class ProductClassificationRequest(BaseModel):
     product_name: str = Field(min_length=1, max_length=300)
     product_type: str = Field(default="", max_length=300)
-    description: str = Field(min_length=10, max_length=12000)
+    description: str = ""
     materials: list[str] = Field(default_factory=list, max_length=50)
     components: list[str] = Field(default_factory=list, max_length=50)
     functions: list[str] = Field(default_factory=list, max_length=50)

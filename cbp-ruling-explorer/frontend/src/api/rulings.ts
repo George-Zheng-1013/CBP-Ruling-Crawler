@@ -15,6 +15,18 @@ export interface RulingsQuery
   sort?: string;
 }
 
+export interface PdfDownloadFailure {
+  rulingNo: string;
+  reason: string;
+}
+
+export interface PdfBatchDownloadResult {
+  directory: string;
+  downloaded: string[];
+  failed: PdfDownloadFailure[];
+}
+
+
 /** 将查询状态转换为后端需要的 snake_case 查询参数。 */
 function buildParams(
   query: RulingsQuery,
@@ -69,4 +81,25 @@ export function buildExportUrl(
     if (v != null && v !== '') search.append(k, String(v));
   });
   return `${API_BASE}/api/rulings/export?${search.toString()}`;
+}
+
+/** 单案例 PDF 下载地址。 */
+export function buildRulingPdfUrl(rulingNo: string): string {
+  return `${API_BASE}/api/rulings/${encodeURIComponent(rulingNo)}/pdf`;
+}
+
+/** 将智能归类引用案例保存到本机参考案例目录。 */
+export async function saveReferencePdfs(
+  productName: string,
+  rulingNumbers: string[],
+): Promise<PdfBatchDownloadResult> {
+  const response = await client.post<PdfBatchDownloadResult>(
+    '/api/rulings/download-pdfs',
+    {
+      product_name: productName,
+      ruling_numbers: rulingNumbers,
+    },
+    { timeout: 0 },
+  );
+  return response.data;
 }

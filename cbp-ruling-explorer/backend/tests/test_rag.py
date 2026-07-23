@@ -4,7 +4,9 @@ import sqlite3
 
 import numpy as np
 
-from app.rag import ClassificationService, OpenAICompatibleClient, RagIndex, chunk_ruling
+from app.rag import (
+    ClassificationService, OpenAICompatibleClient, RagIndex, _text_list, chunk_ruling,
+)
 
 
 class FakeEmbeddingClient:
@@ -126,12 +128,23 @@ def test_model_tax_code_must_be_in_backend_candidate_whitelist():
             "detail_url": "https://rulings.cbp.gov/ruling/N10000", "section": "FACTS",
             "text": "A copper battery cable.",
         }],
-        {},
+        {"N10000": {
+            "similarities": "产品名称和用途相同",
+            "differences": "材料尚未说明",
+        }},
         {"hts_version": "2026 Revision 11"},
         [{"code_digits": "8544429000"}],
     )
     assert result["primary"] is None
     assert index.calls == []
+
+    assert result["references"][0]["similarities"] == ["产品名称和用途相同"]
+    assert result["references"][0]["differences"] == ["材料尚未说明"]
+
+
+def test_text_list_does_not_split_model_strings():
+    assert _text_list("完整中文说明") == ["完整中文说明"]
+    assert _text_list(["第一点", "", "第二点"]) == ["第一点", "第二点"]
 
 def test_chat_embedding_and_reranker_use_independent_sources(monkeypatch):
     client = OpenAICompatibleClient(

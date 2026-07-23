@@ -331,3 +331,4 @@ vite.config.ts.timestamp-*
 # Local model credentials and generated RAG index
 cbp-ruling-explorer/backend/config.json
 cbp-ruling-explorer/data/rag/
+/参考案例/

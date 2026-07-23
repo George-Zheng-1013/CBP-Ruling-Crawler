@@ -82,6 +82,24 @@ class RulingDetail(RulingListItem):
     parse_error_msg: str = ""
 
 
+class PdfBatchDownloadRequest(BaseModel):
+    """将智能归类引用案例保存到本机目录。"""
+
+    product_name: str = Field(min_length=1, max_length=300)
+    ruling_numbers: List[str] = Field(min_length=1)
+
+
+class PdfDownloadFailure(BaseModel):
+    ruling_no: str
+    reason: str
+
+
+class PdfBatchDownloadResult(BaseModel):
+    directory: str
+    downloaded: List[str] = Field(default_factory=list)
+    failed: List[PdfDownloadFailure] = Field(default_factory=list)
+
+
 class YearCount(BaseModel):
     """按年份计数。"""
 

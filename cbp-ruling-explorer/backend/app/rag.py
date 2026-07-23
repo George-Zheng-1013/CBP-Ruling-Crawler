@@ -53,6 +53,17 @@ _DISCLAIMER = (
 )
 
 
+def _text_list(value: Any) -> list[str]:
+    """Normalize an LLM string-or-array field without splitting strings."""
+    if isinstance(value, str):
+        values = [value]
+    elif isinstance(value, list):
+        values = value
+    else:
+        return []
+    return [str(item).strip() for item in values if str(item).strip()]
+
+
 def normalize_hts(value: str) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
@@ -786,15 +797,22 @@ class ClassificationService:
                 "hts_version": status["hts_version"],
             },
         )
-        for item in decision.get("reference_analysis", []):
+        reference_analysis = decision.get("reference_analysis", [])
+        if isinstance(reference_analysis, dict):
+            reference_analysis = [reference_analysis]
+        if not isinstance(reference_analysis, list):
+            reference_analysis = []
+        for item in reference_analysis:
+            if not isinstance(item, dict):
+                continue
             ruling_no = str(item.get("ruling_no") or "")
             if ruling_no in selected_meta:
-                selected_meta[ruling_no]["similarities"] = [
-                    str(value) for value in item.get("similarities", [])
-                ]
-                selected_meta[ruling_no]["differences"] = [
-                    str(value) for value in item.get("differences", [])
-                ]
+                selected_meta[ruling_no]["similarities"] = _text_list(
+                    item.get("similarities")
+                )
+                selected_meta[ruling_no]["differences"] = _text_list(
+                    item.get("differences")
+                )
         return self._validated_result(
             decision, profile, selected_cases, selected_meta, status, hts_candidates
         )
@@ -809,11 +827,8 @@ class ClassificationService:
         hts_candidates: list[dict[str, Any]],
     ) -> dict[str, Any]:
         allowed = {case["ruling_no"]: case for case in cases}
-        used = [
-            str(item)
-            for item in decision.get("used_ruling_numbers", [])
-            if str(item) in allowed
-        ]
+        used = [item for item in _text_list(decision.get("used_ruling_numbers"))
+                if item in allowed]
         if not used:
             used = list(allowed)[: min(3, len(allowed))]
 
@@ -834,15 +849,20 @@ class ClassificationService:
                     if decision.get("confidence") in {"high", "medium", "low"}
                     else "low"
                 ),
-                "basis": [
-                    str(item) for item in decision.get("basis", []) if str(item).strip()
-                ],
+                "basis": _text_list(decision.get("basis")),
             }
         else:
             warnings.append("模型候选税号未通过当前 HTS 有效性校验，未给出主税号。")
 
         alternatives = []
-        for item in decision.get("alternative_codes", [])[:3]:
+        alternative_codes = decision.get("alternative_codes", [])
+        if isinstance(alternative_codes, dict):
+            alternative_codes = [alternative_codes]
+        if not isinstance(alternative_codes, list):
+            alternative_codes = []
+        for item in alternative_codes[:3]:
+            if not isinstance(item, dict):
+                continue
             code = normalize_hts(str(item.get("hts_code") or ""))
             row = self.index.exact_hts(code) if code in allowed_hts else None
             if row:
@@ -869,25 +889,15 @@ class ClassificationService:
                     "detail_url": case["detail_url"],
                     "section": case["section"],
                     "excerpt": case["text"][:RAG_EXCERPT_CHARS],
-                    "similarities": [
-                        str(item) for item in meta.get("similarities", [])
-                    ],
-                    "differences": [
-                        str(item) for item in meta.get("differences", [])
-                    ],
+                    "similarities": _text_list(meta.get("similarities")),
+                    "differences": _text_list(meta.get("differences")),
                 }
             )
 
         missing = list(
             dict.fromkeys(
-                [
-                    str(item)
-                    for item in (
-                        list(profile.get("missing_information", []))
-                        + list(decision.get("missing_information", []))
-                    )
-                    if str(item).strip()
-                ]
+                _text_list(profile.get("missing_information"))
+                + _text_list(decision.get("missing_information"))
             )
         )
         return {
@@ -908,9 +918,7 @@ class ClassificationService:
             "primary": None,
             "alternatives": [],
             "references": [],
-            "missing_information": [
-                str(item) for item in profile.get("missing_information", [])
-            ],
+            "missing_information": _text_list(profile.get("missing_information")),
             "warnings": [warning],
             "hts_version": "",
             "disclaimer": _DISCLAIMER,
