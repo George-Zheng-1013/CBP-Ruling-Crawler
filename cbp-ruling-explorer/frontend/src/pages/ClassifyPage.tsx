@@ -295,14 +295,6 @@ function ResultView({ result, productName }: { result: ClassificationResult; pro
         </section>
       )}
 
-      {result.missingInformation.length > 0 && (
-        <section className="card p-5">
-          <h2 className="heading mb-2">建议补充的信息</h2>
-          <ul className="list-disc pl-5 body space-y-1">
-            {result.missingInformation.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </section>
-      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
