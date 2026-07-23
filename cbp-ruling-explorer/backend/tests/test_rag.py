@@ -6,6 +6,7 @@ import numpy as np
 
 from app.rag import (
     ClassificationService, OpenAICompatibleClient, RagIndex, _text_list, chunk_ruling,
+    normalize_hts,
 )
 
 
@@ -231,3 +232,133 @@ def test_truncated_embedding_batch_is_split_and_retried(monkeypatch):
     vectors = client.embeddings(["one", "two"])
     assert len(vectors) == 2
     assert batch_sizes == [2, 1, 1]
+
+
+def _hts_fixture(path):
+    path.write_text(
+        json.dumps([
+            {"htsno": "8544", "indent": "0", "description": "Insulated wire and cable"},
+            {"htsno": "8544.42", "indent": "1", "description": "Electric conductors with connectors"},
+            {"htsno": "8544.42.90", "indent": "2", "description": "Other battery cables"},
+            {"htsno": "8544.42.90.00", "indent": "3", "description": "Battery cables"},
+            {"htsno": "8507", "indent": "0", "description": "Electric accumulators"},
+            {"htsno": "8507.60.00.10", "indent": "1", "description": "Lithium ion batteries"},
+        ]),
+        encoding="utf-8",
+    )
+
+
+def test_complete_hts_fts_supplies_candidates_without_cases(tmp_path):
+    source = tmp_path / "source.db"
+    _source_db(source)
+    index = RagIndex(str(tmp_path / "rag.db"), str(source), FakeEmbeddingClient())
+    hts = tmp_path / "hts.json"
+    _hts_fixture(hts)
+    index.sync_hts(str(hts))
+
+    headings = index.retrieve_hts_headings("battery cable with connectors")
+    candidates = index.hts_candidates([], "battery cable with connectors")
+
+    assert headings[0]["code_digits"] == "8544"
+    assert any(item["code_digits"] == "8544429000" for item in candidates)
+
+
+def test_legal_pdf_sync_is_incremental_and_page_scoped(tmp_path, monkeypatch):
+    source = tmp_path / "source.db"
+    _source_db(source)
+    index = RagIndex(str(tmp_path / "rag.db"), str(source), FakeEmbeddingClient())
+    legal_source = {
+        "source_id": "current-hts",
+        "source_type": "hts_legal",
+        "title": "Current HTS",
+        "scope": "auto",
+        "url": "https://official.example/current.pdf",
+    }
+    monkeypatch.setattr("app.rag.read_source_bytes", lambda _: b"%PDF-test")
+    monkeypatch.setattr(
+        "app.rag.extract_pdf_pages",
+        lambda _: [
+            "GENERAL RULES OF INTERPRETATION\n1. Classification follows heading terms.",
+            "CHAPTER 85\nNotes\n1. This chapter does not cover sample goods.",
+        ],
+    )
+
+    first = index.sync_legal([legal_source])
+    second = index.sync_legal([legal_source])
+    retrieved = index.retrieve_legal("sample goods", ["8544"])
+
+    assert first["changed_sources"] == 1
+    assert first["written_chunks"] == 2
+    assert second["unchanged_sources"] == 1
+    assert index.status()["legal_chunks"] == 2
+    assert any(item["scope"] == "chapter:85" and item["page"] == 2 for item in retrieved)
+
+
+def test_backend_builds_validated_four_to_ten_digit_tree(tmp_path):
+    source = tmp_path / "source.db"
+    _source_db(source)
+    index = RagIndex(str(tmp_path / "rag.db"), str(source), FakeEmbeddingClient())
+    hts = tmp_path / "hts.json"
+    _hts_fixture(hts)
+    index.sync_hts(str(hts))
+    candidate = index.exact_hts("8544.42.90.00")
+    legal = {
+        "chunk_id": "legal-1", "source_type": "hts_legal", "title": "GRI",
+        "text": "GRI 1 applies.", "source_url": "https://official.example/gri.pdf",
+        "page": 1,
+    }
+    service = ClassificationService(index=index, client=FakeEmbeddingClient())
+    result = service._validated_result(
+        {
+            "primary_hts_code": "8544.42.90.00",
+            "confidence": "high",
+            "basis": ["商品为带连接器的绝缘电缆。"],
+            "rules_applied": [{
+                "rule": "GRI 1", "reason": "按品目条文归类",
+                "evidence_ids": ["legal:legal-1", "legal:invented"],
+            }],
+            "heading_analysis": [{
+                "heading_code": "8544", "status": "selected",
+                "reason": "电缆品目更具体", "evidence_ids": ["legal:legal-1"],
+            }],
+        },
+        {"english_query": "battery cable", "missing_information": []},
+        [], {}, {"hts_version": "2026 Revision 11"},
+        [candidate], [legal],
+        [index.retrieve_hts_headings("battery cable")[0]],
+        {"product_name": "电池连接线", "materials": ["铜"]},
+    )
+    tree = result["classification_tree"]
+    heading = next(
+        item for item in tree["root"]["children"]
+        if item["node_type"] == "candidate_heading"
+    )
+    codes = [heading["hts_code"]]
+    child = heading
+    while child["children"]:
+        child = child["children"][0]
+        codes.append(child["hts_code"])
+
+    assert [len(normalize_hts(code)) for code in codes] == [4, 6, 8, 10]
+    assert normalize_hts(codes[-1]) == "8544429000"
+    assert tree["root"]["children"][0]["evidence_ids"] == ["legal:legal-1"]
+    assert result["primary"]["confidence"] == "medium"
+
+
+def test_hts_sync_skips_unchanged_and_updates_only_changed_rows(tmp_path):
+    source = tmp_path / "source.db"
+    _source_db(source)
+    index = RagIndex(str(tmp_path / "rag.db"), str(source), FakeEmbeddingClient())
+    hts = tmp_path / "hts.json"
+    _hts_fixture(hts)
+    first = index.sync_hts(str(hts))
+    second = index.sync_hts(str(hts))
+    items = json.loads(hts.read_text(encoding="utf-8"))
+    items[-1]["description"] = "Lithium ion battery cells"
+    hts.write_text(json.dumps(items), encoding="utf-8")
+    third = index.sync_hts(str(hts))
+
+    assert first["changed_entries"] == 6
+    assert second["unchanged"] is True
+    assert third["changed_entries"] == 1
+    assert third["deleted_entries"] == 0

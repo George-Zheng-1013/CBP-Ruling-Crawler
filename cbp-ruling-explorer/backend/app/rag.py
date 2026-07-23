@@ -42,6 +42,12 @@ from app.config import (
     RERANKER_TIMEOUT_SECONDS,
 )
 from app.errors import BadRequestError, ServiceUnavailableError, UpstreamError
+from app.legal_knowledge import (
+    chunk_legal_pages,
+    default_legal_sources,
+    extract_pdf_pages,
+    read_source_bytes,
+)
 
 _SECTION_RE = re.compile(
     r"(?im)^\s*(FACTS|ISSUE(?:S)?|LAW AND ANALYSIS|ANALYSIS|HOLDING|BACKGROUND)\s*:?\s*$"
@@ -349,12 +355,51 @@ class RagIndex:
                     other_rate TEXT NOT NULL,
                     version TEXT NOT NULL
                 );
+                CREATE VIRTUAL TABLE IF NOT EXISTS hts_entries_fts USING fts5(
+                    code_digits UNINDEXED, code, description, parent_path
+                );
+                CREATE TABLE IF NOT EXISTS legal_sources (
+                    source_id TEXT PRIMARY KEY,
+                    content_hash TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    version TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS legal_chunks (
+                    id INTEGER PRIMARY KEY,
+                    chunk_id TEXT NOT NULL UNIQUE,
+                    source_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    page INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    content_hash TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_legal_scope ON legal_chunks(scope);
+                CREATE INDEX IF NOT EXISTS idx_legal_source ON legal_chunks(source_id);
+                CREATE VIRTUAL TABLE IF NOT EXISTS legal_chunks_fts USING fts5(
+                    title, text, scope
+                );
                 CREATE TABLE IF NOT EXISTS index_meta (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
                 """
             )
+            hts_count = conn.execute("SELECT COUNT(*) FROM hts_entries").fetchone()[0]
+            hts_fts_count = conn.execute("SELECT COUNT(*) FROM hts_entries_fts").fetchone()[0]
+            if hts_count and not hts_fts_count:
+                conn.execute(
+                    """
+                    INSERT INTO hts_entries_fts(code_digits, code, description, parent_path)
+                    SELECT code_digits, code, description, parent_path FROM hts_entries
+                    """
+                )
 
     def status(self) -> dict[str, Any]:
         if not Path(self.index_path).is_file():
@@ -364,13 +409,16 @@ class RagIndex:
                 "rulings": 0,
                 "hts_entries": 0,
                 "hts_version": "",
+                "legal_chunks": 0,
             }
+        self.init_schema()
         with self.connect() as conn:
             chunks = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
             rulings = conn.execute(
                 "SELECT COUNT(DISTINCT ruling_no) FROM chunks"
             ).fetchone()[0]
             hts_entries = conn.execute("SELECT COUNT(*) FROM hts_entries").fetchone()[0]
+            legal_chunks = conn.execute("SELECT COUNT(*) FROM legal_chunks").fetchone()[0]
             row = conn.execute(
                 "SELECT value FROM index_meta WHERE key='hts_version'"
             ).fetchone()
@@ -380,6 +428,7 @@ class RagIndex:
             "rulings": rulings,
             "hts_entries": hts_entries,
             "hts_version": row[0] if row else "",
+            "legal_chunks": legal_chunks,
         }
 
     def sync_rulings(self) -> dict[str, int]:
@@ -529,10 +578,27 @@ class RagIndex:
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise UpstreamError(f"USITC HTS JSON 解析失败: {exc}") from exc
         else:
-            with open(source, "r", encoding="utf-8") as handle:
-                items = json.load(handle)
+            payload = Path(source).read_bytes()
+            try:
+                items = json.loads(payload.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise BadRequestError(f"HTS JSON 解析失败: {exc}") from exc
         if not isinstance(items, list):
             raise BadRequestError("HTS JSON 顶层必须为数组")
+        payload_hash = hashlib.sha256(payload).hexdigest()
+        with self.connect() as conn:
+            previous_hash = conn.execute(
+                "SELECT value FROM index_meta WHERE key='hts_content_hash'"
+            ).fetchone()
+            if previous_hash and previous_hash[0] == payload_hash:
+                count = conn.execute("SELECT COUNT(*) FROM hts_entries").fetchone()[0]
+                return {
+                    "hts_entries": count,
+                    "hts_version": HTS_VERSION,
+                    "changed_entries": 0,
+                    "deleted_entries": 0,
+                    "unchanged": True,
+                }
 
         stack: dict[int, str] = {}
         entries: list[tuple[Any, ...]] = []
@@ -562,15 +628,52 @@ class RagIndex:
                 stack[indent] = description
 
         with self.connect() as conn:
-            conn.execute("DELETE FROM hts_entries")
+            columns = (
+                "code_digits", "code", "indent", "description", "parent_path",
+                "general_rate", "special_rate", "other_rate", "version",
+            )
+            existing = {
+                row["code_digits"]: tuple(row[column] for column in columns)
+                for row in conn.execute("SELECT * FROM hts_entries")
+            }
+            incoming = {item[0]: item for item in entries}
+            changed = [
+                item for code, item in incoming.items()
+                if existing.get(code) != item
+            ]
+            deleted = sorted(set(existing) - set(incoming))
+            affected = [*deleted, *(item[0] for item in changed)]
+            conn.executemany(
+                "DELETE FROM hts_entries_fts WHERE code_digits=?",
+                [(code,) for code in affected],
+            )
+            conn.executemany(
+                "DELETE FROM hts_entries WHERE code_digits=?",
+                [(code,) for code in deleted],
+            )
             conn.executemany(
                 """
-                INSERT OR REPLACE INTO hts_entries(
+                INSERT INTO hts_entries(
                     code_digits, code, indent, description, parent_path,
                     general_rate, special_rate, other_rate, version
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(code_digits) DO UPDATE SET
+                    code=excluded.code, indent=excluded.indent,
+                    description=excluded.description,
+                    parent_path=excluded.parent_path,
+                    general_rate=excluded.general_rate,
+                    special_rate=excluded.special_rate,
+                    other_rate=excluded.other_rate,
+                    version=excluded.version
                 """,
-                entries,
+                changed,
+            )
+            conn.executemany(
+                """
+                INSERT INTO hts_entries_fts(code_digits, code, description, parent_path)
+                VALUES (?, ?, ?, ?)
+                """,
+                [(item[0], item[1], item[3], item[4]) for item in changed],
             )
             conn.execute(
                 """
@@ -579,7 +682,20 @@ class RagIndex:
                 """,
                 (HTS_VERSION,),
             )
-        return {"hts_entries": len(entries), "hts_version": HTS_VERSION}
+            conn.execute(
+                """
+                INSERT INTO index_meta(key, value) VALUES ('hts_content_hash', ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """,
+                (payload_hash,),
+            )
+        return {
+            "hts_entries": len(entries),
+            "hts_version": HTS_VERSION,
+            "changed_entries": len(changed),
+            "deleted_entries": len(deleted),
+            "unchanged": False,
+        }
 
     @staticmethod
     def _fts_query(query: str) -> str:
@@ -655,15 +771,19 @@ class RagIndex:
             :RAG_RERANK_TOP_K
         ]
 
-    def hts_candidates(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    def hts_candidates(
+        self, cases: Iterable[dict[str, Any]], query: str = ""
+    ) -> list[dict[str, Any]]:
+        """Union case-derived codes with complete-HTS full-text heading matches."""
         prefixes: list[str] = []
         for case in cases:
             for code in case.get("hs_codes", []):
                 digits = normalize_hts(code)
-                if len(digits) >= 6:
+                if len(digits) >= 4:
                     prefixes.append(digits)
-        if not prefixes:
-            return []
+        prefixes.extend(
+            item["code_digits"] for item in self.retrieve_hts_headings(query, 12)
+        )
         with self.connect() as conn:
             found: dict[str, dict[str, Any]] = {}
             for digits in dict.fromkeys(prefixes):
@@ -672,27 +792,220 @@ class RagIndex:
                 ).fetchone()
                 if row and len(row["code_digits"]) == 10:
                     found[row["code_digits"]] = dict(row)
-                    continue
+                prefix_length = 6 if len(digits) >= 6 else 4
                 for child in conn.execute(
                     """
                     SELECT * FROM hts_entries
                     WHERE code_digits LIKE ? AND length(code_digits)=10
                     LIMIT 12
                     """,
-                    (f"{digits[:6]}%",),
+                    (f"{digits[:prefix_length]}%",),
                 ):
                     found[child["code_digits"]] = dict(child)
+                if len(found) >= 40:
+                    break
         return list(found.values())[:40]
 
-    def exact_hts(self, code: str) -> dict[str, Any] | None:
+    def sync_legal(
+        self, sources: list[dict[str, str]] | None = None
+    ) -> dict[str, Any]:
+        """Incrementally index official PDF text while preserving page citations."""
+        self.init_schema()
+        sources = sources or default_legal_sources()
+        changed = 0
+        unchanged = 0
+        written_chunks = 0
+        failures: list[dict[str, str]] = []
+        with self.connect() as conn:
+            known = {
+                row["source_id"]: row["content_hash"]
+                for row in conn.execute("SELECT source_id, content_hash FROM legal_sources")
+            }
+        for source in sources:
+            try:
+                payload = read_source_bytes(source["url"])
+                document_hash = hashlib.sha256(payload + b"\0legal-parser-v2").hexdigest()
+                if known.get(source["source_id"]) == document_hash:
+                    unchanged += 1
+                    continue
+                chunks = chunk_legal_pages(
+                    extract_pdf_pages(payload), source, HTS_VERSION, RAG_CHUNK_CHARS
+                )
+                with self.connect() as conn:
+                    old_ids = [
+                        row[0] for row in conn.execute(
+                            "SELECT id FROM legal_chunks WHERE source_id=? AND version=?",
+                            (source["source_id"], HTS_VERSION),
+                        )
+                    ]
+                    conn.executemany(
+                        "DELETE FROM legal_chunks_fts WHERE rowid=?",
+                        [(row_id,) for row_id in old_ids],
+                    )
+                    conn.execute(
+                        "DELETE FROM legal_chunks WHERE source_id=? AND version=?",
+                        (source["source_id"], HTS_VERSION),
+                    )
+                    for chunk in chunks:
+                        cursor = conn.execute(
+                            """
+                            INSERT INTO legal_chunks(
+                                chunk_id, source_id, source_type, title, scope, page,
+                                text, source_url, version, content_hash
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                chunk["chunk_id"], chunk["source_id"],
+                                chunk["source_type"], chunk["title"], chunk["scope"],
+                                chunk["page"], chunk["text"], chunk["source_url"],
+                                chunk["version"], chunk["content_hash"],
+                            ),
+                        )
+                        conn.execute(
+                            "INSERT INTO legal_chunks_fts(rowid, title, text, scope) VALUES (?, ?, ?, ?)",
+                            (cursor.lastrowid, chunk["title"], chunk["text"], chunk["scope"]),
+                        )
+                    conn.execute(
+                        """
+                        INSERT INTO legal_sources(
+                            source_id, content_hash, title, source_type, scope,
+                            source_url, version
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(source_id) DO UPDATE SET
+                            content_hash=excluded.content_hash,
+                            title=excluded.title,
+                            source_type=excluded.source_type,
+                            scope=excluded.scope,
+                            source_url=excluded.source_url,
+                            version=excluded.version
+                        """,
+                        (
+                            source["source_id"], document_hash, source["title"],
+                            source["source_type"], source["scope"], source["url"],
+                            HTS_VERSION,
+                        ),
+                    )
+                changed += 1
+                written_chunks += len(chunks)
+            except (OSError, UpstreamError, KeyError) as exc:
+                failures.append({
+                    "source_id": str(source.get("source_id") or ""),
+                    "error": str(exc),
+                })
+        return {
+            "changed_sources": changed,
+            "unchanged_sources": unchanged,
+            "written_chunks": written_chunks,
+            "failed_sources": failures,
+        }
+
+    def retrieve_hts_headings(
+        self, query: str, limit: int = 12
+    ) -> list[dict[str, Any]]:
+        """Search the complete current HTS and aggregate matches to legal headings."""
+        fts_query = self._fts_query(query)
+        if not fts_query:
+            return []
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT code_digits, bm25(hts_entries_fts) AS rank
+                FROM hts_entries_fts
+                WHERE hts_entries_fts MATCH ?
+                ORDER BY rank LIMIT ?
+                """,
+                (fts_query, max(limit * 8, 40)),
+            ).fetchall()
+            headings: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                prefix = row["code_digits"][:4]
+                if len(prefix) != 4 or prefix in headings:
+                    continue
+                heading = conn.execute(
+                    "SELECT * FROM hts_entries WHERE code_digits=? AND length(code_digits)=4",
+                    (prefix,),
+                ).fetchone()
+                if heading:
+                    item = dict(heading)
+                    item["search_rank"] = float(row["rank"])
+                    headings[prefix] = item
+                if len(headings) >= limit:
+                    break
+        return list(headings.values())
+
+    def retrieve_legal(
+        self, query: str, heading_codes: Iterable[str], limit: int = 16
+    ) -> list[dict[str, Any]]:
+        fts_query = self._fts_query(query)
+        chapters = {
+            normalize_hts(code)[:2] for code in heading_codes
+            if len(normalize_hts(code)) >= 2
+        }
+        scopes = ["general", *(f"chapter:{chapter}" for chapter in sorted(chapters))]
+        with self.connect() as conn:
+            found: dict[int, dict[str, Any]] = {}
+            general_rows = conn.execute(
+                """
+                SELECT * FROM legal_chunks
+                WHERE version=? AND scope='general'
+                ORDER BY CASE
+                    WHEN upper(text) LIKE '%GENERAL RULES OF INTERPRETATION%' THEN 0
+                    WHEN upper(title) LIKE '%TARIFF CLASSIFICATION%' THEN 1
+                    ELSE 2 END, page
+                LIMIT 6
+                """,
+                (HTS_VERSION,),
+            ).fetchall()
+            for row in general_rows:
+                found[row["id"]] = dict(row)
+            if fts_query:
+                placeholders = ",".join("?" for _ in scopes)
+                rows = conn.execute(
+                    f"""
+                    SELECT legal_chunks.*, bm25(legal_chunks_fts) AS rank
+                    FROM legal_chunks_fts
+                    JOIN legal_chunks ON legal_chunks.id=legal_chunks_fts.rowid
+                    WHERE legal_chunks_fts MATCH ?
+                      AND legal_chunks.version=?
+                      AND legal_chunks.scope IN ({placeholders})
+                    ORDER BY rank LIMIT ?
+                    """,
+                    (fts_query, HTS_VERSION, *scopes, limit),
+                ).fetchall()
+                for row in rows:
+                    found[row["id"]] = dict(row)
+        return list(found.values())[:limit]
+
+    def hts_hierarchy(self, code: str) -> list[dict[str, Any]]:
         digits = normalize_hts(code)
         if len(digits) != 10:
+            return []
+        prefixes = [digits[:4], digits[:6], digits[:8], digits]
+        with self.connect() as conn:
+            rows = {
+                row["code_digits"]: dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM hts_entries WHERE code_digits IN (?, ?, ?, ?)",
+                    prefixes,
+                )
+            }
+        return [rows[prefix] for prefix in prefixes if prefix in rows]
+
+    def hts_entry(self, code: str) -> dict[str, Any] | None:
+        digits = normalize_hts(code)
+        if len(digits) not in {4, 6, 8, 10}:
             return None
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM hts_entries WHERE code_digits=?", (digits,)
             ).fetchone()
         return dict(row) if row else None
+
+    def exact_hts(self, code: str) -> dict[str, Any] | None:
+        digits = normalize_hts(code)
+        if len(digits) != 10:
+            return None
+        return self.hts_entry(digits)
 
 
 class ClassificationService:
@@ -717,10 +1030,10 @@ class ClassificationService:
         profile = self.client.chat_json(
             (
                 "You convert a Chinese or English product description into an English "
-                "CBP ruling retrieval query. Use only supplied facts. Return JSON with "
-                "english_query (string), keywords (array), and missing_information (array). "
-                "english_query and keywords must be English for retrieval; every item in "
-                "missing_information must be written in Simplified Chinese."
+                "HTSUS and CBP ruling retrieval query. Use only supplied facts. Return JSON "
+                "with english_query (string), keywords (array), and missing_information "
+                "(array). Retrieval text must be English; missing information must be "
+                "Simplified Chinese."
             ),
             product,
         )
@@ -729,63 +1042,88 @@ class ClassificationService:
             raise UpstreamError("模型未生成可检索的英文商品描述")
         query_vector = self.client.embeddings([english_query])[0]
         cases = self.index.retrieve(english_query, query_vector)
-        if not cases:
-            return self._insufficient(profile, "未检索到相关 CBP 裁定")
-
-        compact_cases = [
-            {
-                "ruling_no": case["ruling_no"],
-                "subject": case["subject"],
-                "year": case["year"],
-                "status": case["status"],
-                "hs_codes": case["hs_codes"],
-                "evidence": case["text"][:RAG_EXCERPT_CHARS],
-            }
-            for case in cases
-        ]
-        rerank_documents = [
-            (
-                f"Ruling: {case['ruling_no']}\nSubject: {case['subject']}\n"
-                f"Year: {case['year']}\nStatus: {case['status']}\n"
-                f"HTS codes: {', '.join(case['hs_codes'])}\n"
-                f"Evidence: {case['text'][:RAG_EXCERPT_CHARS]}"
+        selected_cases: list[dict[str, Any]] = []
+        selected_compact: list[dict[str, Any]] = []
+        selected_meta: dict[str, dict[str, Any]] = {}
+        if cases:
+            compact_cases = [
+                {
+                    "ruling_no": case["ruling_no"],
+                    "subject": case["subject"],
+                    "year": case["year"],
+                    "status": case["status"],
+                    "hs_codes": case["hs_codes"],
+                    "evidence": case["text"][:RAG_EXCERPT_CHARS],
+                }
+                for case in cases
+            ]
+            rerank_documents = [
+                (
+                    f"Ruling: {case['ruling_no']}\nSubject: {case['subject']}\n"
+                    f"Year: {case['year']}\nStatus: {case['status']}\n"
+                    f"HTS codes: {', '.join(case['hs_codes'])}\n"
+                    f"Evidence: {case['text'][:RAG_EXCERPT_CHARS]}"
+                )
+                for case in cases
+            ]
+            ranked = self.client.rerank(
+                english_query, rerank_documents, RAG_EVIDENCE_TOP_K
             )
-            for case in cases
-        ]
-        ranked = self.client.rerank(
-            english_query, rerank_documents, RAG_EVIDENCE_TOP_K
-        )
-        selected_cases = [cases[item["index"]] for item in ranked]
-        selected_compact = [compact_cases[item["index"]] for item in ranked]
-        selected_meta = {
-            cases[item["index"]]["ruling_no"]: {
-                "rerank_score": item["relevance_score"]
+            selected_cases = [cases[item["index"]] for item in ranked]
+            selected_compact = [compact_cases[item["index"]] for item in ranked]
+            selected_meta = {
+                cases[item["index"]]["ruling_no"]: {
+                    "rerank_score": item["relevance_score"]
+                }
+                for item in ranked
             }
-            for item in ranked
-        }
-        hts_candidates = self.index.hts_candidates(selected_cases)
+
+        hts_headings = self.index.retrieve_hts_headings(english_query, 12)
+        hts_candidates = self.index.hts_candidates(selected_cases, english_query)
         if not hts_candidates:
-            return self._insufficient(profile, "相关案例的历史税号无法映射到当前 HTS")
+            return self._insufficient(
+                profile, "完整 HTS 文本与历史案例均未召回可验证的现行十位税号"
+            )
+        legal_chunks = self.index.retrieve_legal(
+            english_query,
+            [item["code_digits"] for item in hts_headings],
+        )
+        legal_payload = [
+            {
+                "evidence_id": f"legal:{item['chunk_id']}",
+                "title": item["title"],
+                "scope": item["scope"],
+                "page": item["page"],
+                "text": item["text"][:RAG_EXCERPT_CHARS],
+            }
+            for item in legal_chunks
+        ]
 
         decision = self.client.chat_json(
             (
                 "Act as a cautious HTSUS classification research assistant. Choose only "
-                "from current_hts. Use CBP cases as analogies, explain similarities and "
-                "material differences, and do not claim a binding ruling. Return JSON with "
-                "primary_hts_code (or empty if evidence is insufficient), confidence "
-                "(high|medium|low), basis (array of concise strings), alternative_codes "
-                "(array of at most 3 objects: hts_code, reason), used_ruling_numbers "
-                "(array containing only supplied ruling numbers), missing_information, and "
-                "reference_analysis (array of objects with ruling_no, similarities, and "
-                "differences for each actually used ruling). All generated explanatory "
-                "content must be in Simplified Chinese, including basis, alternative reason, "
-                "missing_information, similarities, and differences. Keep ruling numbers, "
-                "HTS codes, official HTS descriptions, and quoted CBP evidence unchanged."
+                "from current_hts and compare the supplied four-digit headings under GRI 1 "
+                "before applying only relevant later rules. Use legal_evidence and CBP cases "
+                "as support; never invent codes or evidence ids. Return JSON with "
+                "primary_hts_code, confidence (high|medium|low), basis, alternative_codes "
+                "(at most 3), used_ruling_numbers, missing_information, reference_analysis, "
+                "rules_applied (objects: rule, reason, evidence_ids), and heading_analysis "
+                "(objects: heading_code, status selected|excluded|pending, reason, "
+                "evidence_ids, ruling_numbers). All explanations must be Simplified Chinese. "
+                "Keep official English descriptions and quotations unchanged."
             ),
             {
                 "product": product,
                 "profile": profile,
                 "cases": selected_compact,
+                "candidate_headings": [
+                    {
+                        "hts_code": item["code"],
+                        "description": item["description"],
+                        "parent_path": item["parent_path"],
+                    }
+                    for item in hts_headings
+                ],
                 "current_hts": [
                     {
                         "hts_code": item["code"],
@@ -794,6 +1132,7 @@ class ClassificationService:
                     }
                     for item in hts_candidates
                 ],
+                "legal_evidence": legal_payload,
                 "hts_version": status["hts_version"],
             },
         )
@@ -814,7 +1153,8 @@ class ClassificationService:
                     item.get("differences")
                 )
         return self._validated_result(
-            decision, profile, selected_cases, selected_meta, status, hts_candidates
+            decision, profile, selected_cases, selected_meta, status, hts_candidates,
+            legal_chunks, hts_headings, product,
         )
 
     def _validated_result(
@@ -825,10 +1165,18 @@ class ClassificationService:
         selected_meta: dict[str, dict[str, Any]],
         status: dict[str, Any],
         hts_candidates: list[dict[str, Any]],
+        legal_chunks: list[dict[str, Any]] | None = None,
+        hts_headings: list[dict[str, Any]] | None = None,
+        product: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        legal_chunks = legal_chunks or []
+        hts_headings = hts_headings or []
+        product = product or {}
         allowed = {case["ruling_no"]: case for case in cases}
-        used = [item for item in _text_list(decision.get("used_ruling_numbers"))
-                if item in allowed]
+        used = [
+            item for item in _text_list(decision.get("used_ruling_numbers"))
+            if item in allowed
+        ]
         if not used:
             used = list(allowed)[: min(3, len(allowed))]
 
@@ -843,7 +1191,7 @@ class ClassificationService:
             primary = {
                 "hts_code": primary_row["code"],
                 "description": primary_row["description"],
-                "parent_path": primary_row["parent_path"],
+                "parent_path": primary_row.get("parent_path", ""),
                 "confidence": (
                     decision.get("confidence")
                     if decision.get("confidence") in {"high", "medium", "low"}
@@ -853,6 +1201,10 @@ class ClassificationService:
             }
         else:
             warnings.append("模型候选税号未通过当前 HTS 有效性校验，未给出主税号。")
+        if not cases:
+            warnings.append("未检索到足够相似的 CBP 案例，本次路径主要依据现行法律文本，置信度已降低。")
+            if primary and primary["confidence"] == "high":
+                primary["confidence"] = "medium"
 
         alternatives = []
         alternative_codes = decision.get("alternative_codes", [])
@@ -866,39 +1218,54 @@ class ClassificationService:
             code = normalize_hts(str(item.get("hts_code") or ""))
             row = self.index.exact_hts(code) if code in allowed_hts else None
             if row:
-                alternatives.append(
-                    {
-                        "hts_code": row["code"],
-                        "description": row["description"],
-                        "reason": str(item.get("reason") or ""),
-                    }
-                )
+                alternatives.append({
+                    "hts_code": row["code"],
+                    "description": row["description"],
+                    "reason": str(item.get("reason") or ""),
+                })
 
         references = []
         for ruling_no in used:
             case = allowed[ruling_no]
             meta = selected_meta.get(ruling_no, {})
-            references.append(
-                {
-                    "ruling_no": ruling_no,
-                    "subject": case["subject"],
-                    "ruling_date": case["ruling_date"],
-                    "year": case["year"] or 0,
-                    "hs_codes": case["hs_codes"],
-                    "status": case["status"],
-                    "detail_url": case["detail_url"],
-                    "section": case["section"],
-                    "excerpt": case["text"][:RAG_EXCERPT_CHARS],
-                    "similarities": _text_list(meta.get("similarities")),
-                    "differences": _text_list(meta.get("differences")),
-                }
-            )
+            references.append({
+                "ruling_no": ruling_no,
+                "subject": case["subject"],
+                "ruling_date": case["ruling_date"],
+                "year": case["year"] or 0,
+                "hs_codes": case["hs_codes"],
+                "status": case["status"],
+                "detail_url": case["detail_url"],
+                "section": case["section"],
+                "excerpt": case["text"][:RAG_EXCERPT_CHARS],
+                "similarities": _text_list(meta.get("similarities")),
+                "differences": _text_list(meta.get("differences")),
+            })
 
-        missing = list(
-            dict.fromkeys(
-                _text_list(profile.get("missing_information"))
-                + _text_list(decision.get("missing_information"))
+        if references and not any(item["status"] == "active" for item in references):
+            allowed_legal_ids = {
+                f"legal:{item['chunk_id']}" for item in legal_chunks
+            }
+            rules = decision.get("rules_applied", [])
+            if isinstance(rules, dict):
+                rules = [rules]
+            has_legal_support = any(
+                evidence_id in allowed_legal_ids
+                for rule in rules if isinstance(rule, dict)
+                for evidence_id in _text_list(rule.get("evidence_ids"))
             )
+            warnings.append("参考案例均为已撤销或已修改状态，不能作为唯一主依据。")
+            if primary and not has_legal_support:
+                primary = None
+                warnings.append("缺少被实际引用的现行法律依据，已撤回主税号结论。")
+
+        missing = list(dict.fromkeys(
+            _text_list(profile.get("missing_information"))
+            + _text_list(decision.get("missing_information"))
+        ))
+        tree = self._build_tree(
+            decision, product, primary, alternatives, references, legal_chunks,
+            hts_headings, hts_candidates, missing,
         )
         return {
             "product_profile": str(profile.get("english_query") or ""),
@@ -909,39 +1276,224 @@ class ClassificationService:
             "warnings": warnings,
             "hts_version": status["hts_version"],
             "disclaimer": _DISCLAIMER,
+            "classification_tree": tree,
+        }
+
+    def _build_tree(
+        self,
+        decision: dict[str, Any],
+        product: dict[str, Any],
+        primary: dict[str, Any] | None,
+        alternatives: list[dict[str, Any]],
+        references: list[dict[str, Any]],
+        legal_chunks: list[dict[str, Any]],
+        hts_headings: list[dict[str, Any]],
+        hts_candidates: list[dict[str, Any]],
+        missing: list[str],
+    ) -> dict[str, Any]:
+        evidence: list[dict[str, Any]] = []
+        facts = []
+        labels = {
+            "product_name": "产品名称", "product_type": "产品类型",
+            "description": "完整产品描述", "materials": "材料",
+            "components": "主要部件", "functions": "功能",
+            "intended_use": "主要用途", "technical_specs": "技术规格",
+            "country_of_origin": "原产国",
+        }
+        for key, label in labels.items():
+            value = product.get(key)
+            if isinstance(value, list):
+                value = "、".join(str(item) for item in value if item)
+            if value:
+                facts.append(f"{label}：{value}")
+        evidence.append({
+            "id": "product:input", "type": "product_input", "title": "用户输入的商品事实",
+            "excerpt": "\n".join(facts),
+        })
+        legal_by_id: dict[str, dict[str, Any]] = {}
+        for item in legal_chunks:
+            evidence_id = f"legal:{item['chunk_id']}"
+            legal_by_id[evidence_id] = item
+            evidence.append({
+                "id": evidence_id,
+                "type": "cbp_guide" if item["source_type"] == "cbp_guide" else "hts_legal",
+                "title": item["title"], "excerpt": item["text"],
+                "url": item["source_url"], "page": item["page"],
+            })
+        case_by_id: dict[str, dict[str, Any]] = {}
+        for item in references:
+            evidence_id = f"case:{item['ruling_no']}"
+            case_by_id[evidence_id] = item
+            evidence.append({
+                "id": evidence_id, "type": "cbp_case", "title": item["subject"],
+                "excerpt": item["excerpt"], "url": item["detail_url"],
+                "ruling_no": item["ruling_no"], "status": item["status"],
+            })
+
+        rules = decision.get("rules_applied", [])
+        if isinstance(rules, dict):
+            rules = [rules]
+        rule_nodes = []
+        for index, item in enumerate(rules if isinstance(rules, list) else []):
+            if not isinstance(item, dict):
+                continue
+            ids = [
+                value for value in _text_list(item.get("evidence_ids"))
+                if value in legal_by_id
+            ]
+            title = str(item.get("rule") or f"适用规则 {index + 1}")
+            rule_nodes.append({
+                "id": f"rule:{index + 1}",
+                "node_type": "interpretation_rule" if "GRI" in title.upper() else "legal_note",
+                "status": "selected",
+                "title": title,
+                "rationale": _text_list(item.get("reason")),
+                "evidence_ids": ids,
+                "children": [],
+            })
+
+        allowed_headings: dict[str, dict[str, Any]] = {}
+        for row in [*hts_headings, *hts_candidates]:
+            digits = normalize_hts(row.get("code_digits") or row.get("code") or "")
+            prefix = digits[:4]
+            if len(prefix) == 4 and prefix not in allowed_headings:
+                heading = next(
+                    (item for item in hts_headings if item.get("code_digits") == prefix),
+                    None,
+                )
+                if not heading and hasattr(self.index, "hts_entry"):
+                    heading = self.index.hts_entry(prefix)
+                if heading:
+                    allowed_headings[prefix] = heading
+        analyses = decision.get("heading_analysis", [])
+        if isinstance(analyses, dict):
+            analyses = [analyses]
+        analysis_by_heading: dict[str, dict[str, Any]] = {}
+        for item in analyses if isinstance(analyses, list) else []:
+            if not isinstance(item, dict):
+                continue
+            code = normalize_hts(str(item.get("heading_code") or ""))[:4]
+            if code in allowed_headings:
+                analysis_by_heading[code] = item
+        primary_digits = normalize_hts(primary["hts_code"]) if primary else ""
+        requested = list(analysis_by_heading)
+        for code in [primary_digits[:4], *(
+            normalize_hts(item["hts_code"])[:4] for item in alternatives
+        )]:
+            if code in allowed_headings and code not in requested:
+                requested.append(code)
+        if not requested:
+            requested = list(allowed_headings)[:4]
+
+        heading_nodes = []
+        for heading_code in requested[:6]:
+            row = allowed_headings[heading_code]
+            analysis = analysis_by_heading.get(heading_code, {})
+            selected = bool(primary_digits and heading_code == primary_digits[:4])
+            model_status = str(analysis.get("status") or "")
+            status = "selected" if selected else (
+                "excluded" if model_status == "excluded" else "pending"
+            )
+            evidence_ids = [
+                value for value in _text_list(analysis.get("evidence_ids"))
+                if value in legal_by_id
+            ]
+            ruling_ids = [
+                f"case:{value}" for value in _text_list(analysis.get("ruling_numbers"))
+                if f"case:{value}" in case_by_id
+            ]
+            heading_evidence_id = f"hts:{heading_code}"
+            evidence.append({
+                "id": heading_evidence_id, "type": "hts_entry",
+                "title": row.get("description") or "候选四位品目",
+                "excerpt": row.get("parent_path") or "",
+                "hts_code": row.get("code") or heading_code,
+            })
+            node = {
+                "id": f"heading:{heading_code}", "node_type": "candidate_heading",
+                "status": status, "title": row.get("description") or "候选四位品目",
+                "hts_code": row.get("code") or heading_code,
+                "rationale": _text_list(analysis.get("reason")),
+                "evidence_ids": [heading_evidence_id, *evidence_ids], "children": [],
+            }
+            if selected and hasattr(self.index, "hts_hierarchy"):
+                hierarchy = self.index.hts_hierarchy(primary_digits)
+                if [len(item["code_digits"]) for item in hierarchy] == [4, 6, 8, 10]:
+                    parent = node
+                    for level in hierarchy[1:]:
+                        hts_id = f"hts:{level['code_digits']}"
+                        evidence.append({
+                            "id": hts_id, "type": "hts_entry",
+                            "title": level["description"], "excerpt": level.get("parent_path", ""),
+                            "hts_code": level["code"],
+                        })
+                        child = {
+                            "id": f"subheading:{level['code_digits']}",
+                            "node_type": "subheading", "status": "selected",
+                            "title": level["description"], "hts_code": level["code"],
+                            "rationale": primary.get("basis", []) if len(level["code_digits"]) == 10 else [],
+                            "evidence_ids": [hts_id], "children": [],
+                        }
+                        parent["children"].append(child)
+                        parent = child
+            for case_id in ruling_ids:
+                case = case_by_id[case_id]
+                node["children"].append({
+                    "id": f"node:{case_id}", "node_type": "case", "status": status,
+                    "title": f"{case['ruling_no']}：{case['subject']}",
+                    "rationale": case["similarities"], "evidence_ids": [case_id],
+                    "children": [],
+                })
+            heading_nodes.append(node)
+
+        return {
+            "root": {
+                "id": "product", "node_type": "product_facts",
+                "status": "pending" if missing or not primary else "selected",
+                "title": str(product.get("product_name") or "待分类商品"),
+                "rationale": facts, "missing_information": missing,
+                "evidence_ids": ["product:input"],
+                "children": [*rule_nodes, *heading_nodes],
+            },
+            "evidence": evidence,
         }
 
     @staticmethod
     def _insufficient(profile: dict[str, Any], warning: str) -> dict[str, Any]:
         return {
             "product_profile": str(profile.get("english_query") or ""),
-            "primary": None,
-            "alternatives": [],
-            "references": [],
+            "primary": None, "alternatives": [], "references": [],
             "missing_information": _text_list(profile.get("missing_information")),
-            "warnings": [warning],
-            "hts_version": "",
-            "disclaimer": _DISCLAIMER,
+            "warnings": [warning], "hts_version": "",
+            "disclaimer": _DISCLAIMER, "classification_tree": None,
         }
 
 
 def sync_index() -> dict[str, Any]:
     index = RagIndex()
-    return {"rulings": index.sync_rulings(), "hts": index.sync_hts()}
+    return {
+        "rulings": index.sync_rulings(),
+        "hts": index.sync_hts(),
+        "legal": index.sync_legal(),
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build/update the CBP RAG index")
-    parser.add_argument("command", choices=["sync", "status"])
+    parser.add_argument("command", choices=["sync", "sync-legal", "status"])
     parser.add_argument("--hts-json", default=HTS_JSON_URL)
     args = parser.parse_args()
     index = RagIndex()
     if args.command == "status":
         print(json.dumps(index.status(), ensure_ascii=False, indent=2))
         return
+    if args.command == "sync-legal":
+        print(json.dumps(index.sync_legal(), ensure_ascii=False, indent=2))
+        return
     result = {
         "rulings": index.sync_rulings(),
         "hts": index.sync_hts(args.hts_json),
+        "legal": index.sync_legal(),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

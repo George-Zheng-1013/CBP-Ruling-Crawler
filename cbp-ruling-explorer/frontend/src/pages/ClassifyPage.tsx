@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { classifyProduct, getRagIndexStatus } from '../api/classify';
 import { saveReferencePdfs } from '../api/rulings';
+import { ClassificationTreeView } from '../components/ClassificationTreeView';
 import type {
   ClassificationResult,
   ProductClassificationInput,
@@ -25,9 +26,10 @@ const confidenceLabel = { high: '高', medium: '中', low: '低' };
 
 const PROGRESS_STAGES = [
   '整理商品特征与生成检索查询',
-  '检索 CBP 裁定案例',
+  '检索完整 HTS 与 CBP 裁定案例',
   '使用专用模型重排序',
-  '校验现行 USITC HTS 税号',
+  '检索适用解释规则与法律注释',
+  '校验现行 USITC HTS 层级',
   '生成中文归类结论与引用',
 ];
 const rulingStatusLabel: Record<string, string> = {
@@ -123,7 +125,7 @@ export function ClassifyPage() {
       {index && (
         <div className={`card p-4 body ${index.ready ? 'border-green-200' : 'border-amber-300'}`}>
           {index.ready
-            ? `知识库已就绪：${index.rulings.toLocaleString()} 条裁定、${index.chunks.toLocaleString()} 个证据片段，${index.htsVersion}`
+            ? `知识库已就绪：${index.rulings.toLocaleString()} 条裁定、${index.chunks.toLocaleString()} 个案例片段、${index.legalChunks.toLocaleString()} 个法律片段，${index.htsVersion}`
             : '知识库尚未建立。请先配置 backend/config.json，再运行 python -m app.rag sync。'}
         </div>
       )}
@@ -273,6 +275,10 @@ function ResultView({ result, productName }: { result: ClassificationResult; pro
           <p className="body">现有证据不足，暂不输出未经校验的10位税号。</p>
         )}
       </section>
+
+      {result.classificationTree && (
+        <ClassificationTreeView tree={result.classificationTree} />
+      )}
 
       {result.alternatives.length > 0 && (
         <section className="card p-5">

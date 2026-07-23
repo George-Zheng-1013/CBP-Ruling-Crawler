@@ -4,3 +4,4 @@ pydantic>=2.6.0         # 数据校验/响应模型
 python-multipart>=0.0.9 # 表单(如需)
 numpy>=1.26.0          # 本地向量相似度计算
 # SQLite3 为标准库，无需安装
+pypdf>=5.0.0           # 官方 HTS/CBP 法律 PDF 文本提取

@@ -49,6 +49,38 @@ class CaseReference(BaseModel):
     differences: list[str] = Field(default_factory=list)
 
 
+class ClassificationEvidence(BaseModel):
+    id: str
+    type: Literal["product_input", "hts_legal", "hts_entry", "cbp_case", "cbp_guide"]
+    title: str
+    excerpt: str = ""
+    url: str = ""
+    page: int | None = None
+    ruling_no: str = ""
+    hts_code: str = ""
+    status: str = ""
+
+
+class ClassificationTreeNode(BaseModel):
+    id: str
+    node_type: Literal[
+        "product_facts", "interpretation_rule", "legal_note",
+        "candidate_heading", "subheading", "case"
+    ]
+    status: Literal["selected", "excluded", "pending"]
+    title: str
+    hts_code: str = ""
+    rationale: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    children: list["ClassificationTreeNode"] = Field(default_factory=list)
+
+
+class ClassificationTree(BaseModel):
+    root: ClassificationTreeNode
+    evidence: list[ClassificationEvidence] = Field(default_factory=list)
+
+
 class ClassificationResult(BaseModel):
     product_profile: str
     primary: ClassificationPrimary | None = None
@@ -58,6 +90,7 @@ class ClassificationResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     hts_version: str = ""
     disclaimer: str
+    classification_tree: ClassificationTree | None = None
 
 
 class RagIndexStatus(BaseModel):
@@ -66,3 +99,4 @@ class RagIndexStatus(BaseModel):
     rulings: int
     hts_entries: int
     hts_version: str
+    legal_chunks: int = 0
